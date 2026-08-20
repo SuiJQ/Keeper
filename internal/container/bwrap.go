@@ -61,9 +61,11 @@ func (f *BwrapFactory) Type() string {
 // Start 启动容器
 func (c *BwrapContainer) Start(ctx context.Context, spec ContainerSpec) (int, error) {
 	c.logger.Info("starting container")
+	startTime := time.Now()
 
 	// 检查环境依赖
 	if err := c.checkDependencies(); err != nil {
+		RecordContainerStart("bwrap", "error")
 		return 0, err
 	}
 
@@ -88,6 +90,7 @@ func (c *BwrapContainer) Start(ctx context.Context, spec ContainerSpec) (int, er
 
 	// 启动进程
 	if err := cmd.Start(); err != nil {
+		RecordContainerStart("bwrap", "error")
 		return 0, fmt.Errorf("start bwrap: %w", err)
 	}
 
@@ -99,6 +102,10 @@ func (c *BwrapContainer) Start(ctx context.Context, spec ContainerSpec) (int, er
 		Uptime: 0,
 		Ports:  spec.Ports,
 	}
+
+	RecordContainerStart("bwrap", "success")
+	RecordContainerStartDuration("bwrap", time.Since(startTime).Seconds())
+	SetContainerActive("bwrap", 1)
 
 	c.logger.Info("container started", log.Field{Key: "pid", Value: cmd.Process.Pid})
 	return cmd.Process.Pid, nil
@@ -114,6 +121,7 @@ func (c *BwrapContainer) Stop(ctx context.Context, grace time.Duration) error {
 			return 0
 		}()},
 		log.Field{Key: "grace", Value: grace})
+	startTime := time.Now()
 
 	if c.cmd == nil || c.cmd.Process == nil {
 		c.logger.Warn("container not running")
@@ -137,6 +145,7 @@ func (c *BwrapContainer) Stop(ctx context.Context, grace time.Duration) error {
 		c.logger.Warn("grace period exceeded, force killing")
 		if err := c.cmd.Process.Kill(); err != nil {
 			c.logger.Error("error killing container", log.Field{Key: "error", Value: err.Error()})
+			RecordContainerStop("bwrap", "error")
 			return fmt.Errorf("kill container: %w", err)
 		}
 		<-done // 等待进程完全退出
@@ -150,6 +159,10 @@ func (c *BwrapContainer) Stop(ctx context.Context, grace time.Duration) error {
 	c.status.PID = 0
 	c.status.PGID = 0
 
+	RecordContainerStop("bwrap", "success")
+	RecordContainerStopDuration("bwrap", time.Since(startTime).Seconds())
+	SetContainerActive("bwrap", 0)
+
 	c.logger.Info("container stopped successfully")
 	return nil
 }
@@ -157,6 +170,7 @@ func (c *BwrapContainer) Stop(ctx context.Context, grace time.Duration) error {
 // Exec 在容器内执行命令
 func (c *BwrapContainer) Exec(ctx context.Context, req ExecRequest) (*ExecResponse, error) {
 	if c.cmd == nil || c.cmd.Process == nil {
+		RecordContainerExec("bwrap", "error")
 		return nil, errors.NewKeeperError(errors.ErrCodeContainer, "container not running", nil)
 	}
 
@@ -164,9 +178,11 @@ func (c *BwrapContainer) Exec(ctx context.Context, req ExecRequest) (*ExecRespon
 		log.Field{Key: "command", Value: req.Command},
 		log.Field{Key: "pid", Value: c.cmd.Process.Pid},
 		log.Field{Key: "timeout", Value: req.Timeout})
+	startTime := time.Now()
 
 	// 检查 nsenter 是否可用
 	if _, err := exec.LookPath("nsenter"); err != nil {
+		RecordContainerExec("bwrap", "error")
 		return nil, errors.NewKeeperError(errors.ErrCodeProcess, "nsenter not found, cannot exec into container", err)
 	}
 
@@ -236,7 +252,11 @@ func (c *BwrapContainer) Exec(ctx context.Context, req ExecRequest) (*ExecRespon
 	// 如果有错误，附加到响应中
 	if err != nil {
 		resp.Error = err.Error()
+		RecordContainerExec("bwrap", "error")
+	} else {
+		RecordContainerExec("bwrap", "success")
 	}
+	RecordContainerExecDuration("bwrap", time.Since(startTime).Seconds())
 
 	return resp, nil
 }
