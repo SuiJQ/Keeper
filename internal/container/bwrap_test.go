@@ -2,6 +2,7 @@ package container
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -76,7 +77,13 @@ func TestBwrapContainerClose(t *testing.T) {
 }
 
 func TestBuildArgs(t *testing.T) {
-	// 测试 ContainerSpec 结构体
+	factory := NewBwrapFactory()
+	container, err := factory.Create("test")
+	require.NoError(t, err)
+
+	bwrap, ok := container.(*BwrapContainer)
+	require.True(t, ok)
+
 	spec := ContainerSpec{
 		Rootfs:    "/rootfs",
 		UpperDir:  "/upper",
@@ -88,11 +95,46 @@ func TestBuildArgs(t *testing.T) {
 		SeccompBPF: []byte{0x01, 0x02, 0x03},
 	}
 
-	assert.Equal(t, "/rootfs", spec.Rootfs)
-	assert.Equal(t, "/upper", spec.UpperDir)
-	assert.Equal(t, 128, spec.ShmSize)
-	assert.Len(t, spec.Ports, 1)
-	assert.Len(t, spec.Envvars, 2)
+	args := bwrap.buildArgs(spec)
+
+	// 基本参数
+	assert.Contains(t, args, "--unshare-all")
+	assert.Contains(t, args, "--die-with-parent")
+	assert.Contains(t, args, "--new-session")
+
+	// OverlayFS
+	assert.Contains(t, args, "--ro-bind")
+	assert.Contains(t, args, "/rootfs")
+	assert.Contains(t, args, "--bind=/upper:/")
+	assert.Contains(t, args, "--bind=/work:/work")
+
+	// ShmSize
+	assert.Contains(t, args, "--shm-size=128m")
+
+	// Workspace
+	assert.Contains(t, args, "--bind=/workspace:/workspace")
+
+	// Envvars
+	assert.Contains(t, args, "--setenv=FOO=bar")
+	assert.Contains(t, args, "--setenv=BAZ=qux")
+
+	// Seccomp (如果支持)
+	var seccompArg string
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "--seccomp=") {
+			seccompArg = arg
+			break
+		}
+	}
+	assert.NotEmpty(t, seccompArg, "expected seccomp arg")
+	assert.Contains(t, seccompArg, "seccomp-")
+	assert.Contains(t, seccompArg, ".bpf")
+
+	// 默认命令
+	assert.Contains(t, args, "--")
+	assert.Contains(t, args, "/bin/sh")
+	assert.Contains(t, args, "-c")
+	assert.Contains(t, args, "sleep infinity")
 }
 
 func TestCheckKernelSupport(t *testing.T) {

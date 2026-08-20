@@ -1,0 +1,74 @@
+package network
+
+import (
+	"fmt"
+	"net"
+)
+
+// PortForward 端口转发配置
+type PortForward struct {
+	Host      int
+	Container int
+	Protocol  string // tcp / udp
+}
+
+// String 返回端口转发的字符串表示
+func (p *PortForward) String() string {
+	return fmt.Sprintf("%d:%d/%s", p.Host, p.Container, p.Protocol)
+}
+
+// SOCKS5Proxy SOCKS5 代理配置
+type SOCKS5Proxy struct {
+	ListenAddr string
+	Auth       *ProxyAuth
+}
+
+// ProxyAuth 代理认证配置
+type ProxyAuth struct {
+	Username string
+	Password string
+}
+
+// NetworkManager 网络管理器
+type NetworkManager struct {
+	portForwards []*PortForward
+	proxy        *SOCKS5Proxy
+}
+
+// NewNetworkManager 创建网络管理器
+func NewNetworkManager() *NetworkManager {
+	return &NetworkManager{
+		portForwards: make([]*PortForward, 0),
+	}
+}
+
+// AddPortForward 添加端口转发
+func (nm *NetworkManager) AddPortForward(pf *PortForward) {
+	nm.portForwards = append(nm.portForwards, pf)
+}
+
+// PortForwards 返回端口转发列表
+func (nm *NetworkManager) PortForwards() []*PortForward {
+	return nm.portForwards
+}
+
+// SetSOCKS5Proxy 设置 SOCKS5 代理
+func (nm *NetworkManager) SetSOCKS5Proxy(proxy *SOCKS5Proxy) {
+	nm.proxy = proxy
+}
+
+// SOCKS5Proxy 返回 SOCKS5 代理配置
+func (nm *NetworkManager) SOCKS5Proxy() *SOCKS5Proxy {
+	return nm.proxy
+}
+
+// IsPortInUse 检查端口是否被占用
+func IsPortInUse(port int) bool {
+	addr := fmt.Sprintf(":%d", port)
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return true
+	}
+	listener.Close()
+	return false
+}
