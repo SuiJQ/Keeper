@@ -446,3 +446,125 @@ func TestForkAgentWithSnapshots(t *testing.T) {
 	content, _ := os.ReadFile(forkedFile)
 	assert.Equal(t, []byte("source data"), content)
 }
+
+// TestCopyPhysical 测试物理拷贝
+func TestCopyPhysical(t *testing.T) {
+	// 创建源目录
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+	
+	// 创建测试文件和子目录
+	srcFile := filepath.Join(srcDir, "test.txt")
+	err := os.WriteFile(srcFile, []byte("hello world"), 0644)
+	require.NoError(t, err)
+	
+	srcSubdir := filepath.Join(srcDir, "subdir")
+	err = os.MkdirAll(srcSubdir, 0755)
+	require.NoError(t, err)
+	
+	srcSubFile := filepath.Join(srcSubdir, "nested.txt")
+	err = os.WriteFile(srcSubFile, []byte("nested content"), 0644)
+	require.NoError(t, err)
+	
+	// 执行物理拷贝
+	err = copyPhysical(srcDir, dstDir)
+	require.NoError(t, err)
+	
+	// 验证文件存在
+	dstFile := filepath.Join(dstDir, "test.txt")
+	content, err := os.ReadFile(dstFile)
+	require.NoError(t, err)
+	assert.Equal(t, "hello world", string(content))
+	
+	// 验证子目录和文件存在
+	dstSubFile := filepath.Join(dstDir, "subdir", "nested.txt")
+	content, err = os.ReadFile(dstSubFile)
+	require.NoError(t, err)
+	assert.Equal(t, "nested content", string(content))
+}
+
+// TestCopyPhysicalEmptyDir 测试空目录拷贝
+func TestCopyPhysicalEmptyDir(t *testing.T) {
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+	
+	err := copyPhysical(srcDir, dstDir)
+	require.NoError(t, err)
+	
+	// 验证目标目录存在
+	_, err = os.Stat(dstDir)
+	assert.NoError(t, err)
+}
+
+// TestCheckSameDevice 测试设备检查
+func TestCheckSameDevice(t *testing.T) {
+	// 测试相同设备
+	err := checkSameDevice("/tmp", "/tmp")
+	assert.NoError(t, err)
+	
+	// 测试少于2个路径
+	err = checkSameDevice("/tmp")
+	assert.NoError(t, err)
+	
+	err = checkSameDevice()
+	assert.NoError(t, err)
+}
+
+// TestCheckSameDeviceDifferentDevices 测试不同设备
+func TestCheckSameDeviceDifferentDevices(t *testing.T) {
+	// 获取 /tmp 和当前目录的设备
+	tmpDir := t.TempDir()
+	
+	// 创建子目录确保在同一设备上
+	subDir := filepath.Join(tmpDir, "sub")
+	err := os.MkdirAll(subDir, 0755)
+	require.NoError(t, err)
+	
+	// 测试同一设备上的路径
+	err = checkSameDevice(tmpDir, subDir)
+	assert.NoError(t, err)
+}
+
+// TestAtomicExchange 测试原子交换
+func TestAtomicExchange(t *testing.T) {
+	// 创建临时目录
+	tmpDir := t.TempDir()
+	
+	// 创建源文件和目标文件
+	source := filepath.Join(tmpDir, "source.txt")
+	target := filepath.Join(tmpDir, "target.txt")
+	
+	err := os.WriteFile(source, []byte("source content"), 0644)
+	require.NoError(t, err)
+	
+	err = os.WriteFile(target, []byte("target content"), 0644)
+	require.NoError(t, err)
+	
+	// 执行原子交换
+	err = atomicExchange(source, target)
+	require.NoError(t, err)
+	
+	// 验证内容已交换
+	content, err := os.ReadFile(source)
+	require.NoError(t, err)
+	assert.Equal(t, "target content", string(content))
+	
+	content, err = os.ReadFile(target)
+	require.NoError(t, err)
+	assert.Equal(t, "source content", string(content))
+}
+
+// TestAtomicExchangeNonExistent 测试不存在的文件
+func TestAtomicExchangeNonExistent(t *testing.T) {
+	tmpDir := t.TempDir()
+	
+	source := filepath.Join(tmpDir, "nonexistent.txt")
+	target := filepath.Join(tmpDir, "target.txt")
+	
+	err := os.WriteFile(target, []byte("target content"), 0644)
+	require.NoError(t, err)
+	
+	// 交换不存在的文件应该返回错误
+	err = atomicExchange(source, target)
+	assert.Error(t, err)
+}
