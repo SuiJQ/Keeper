@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"keeper/internal/container"
 	"keeper/internal/log"
 	"keeper/internal/storage"
 	"keeper/pkg/config"
@@ -148,15 +149,48 @@ func startAgent(cfg *config.Config, args []string) error {
 
 	// 从 created 或 stopped 状态启动
 	if meta.State == "created" || meta.State == "stopped" {
+		// 创建容器运行时
+		factory := container.NewBwrapFactory()
+		c, err := factory.Create(name)
+		if err != nil {
+			return fmt.Errorf("create container: %w", err)
+		}
+		defer c.Close()
+
+		// 构建容器规格
+		spec := container.ContainerSpec{
+			Name:      name,
+			Rootfs:    meta.RootfsDir,
+			UpperDir:  meta.UpperDir,
+			WorkDir:   meta.WorkDir,
+			Workspace: meta.Workspace,
+			ShmSize:   meta.ShmSizeMB,
+			Envvars:   []string{fmt.Sprintf("AGENT_NAME=%s", name)},
+		}
+
+		// 启动容器
+		pid, err := c.Start(context.Background(), spec)
+		if err != nil {
+			// 更新状态为 fatal
+			meta.State = "fatal_bwrap_exec"
+			meta.Error = err.Error()
+			store.UpdateAgent(context.Background(), meta)
+			return fmt.Errorf("start container: %w", err)
+		}
+
+		// 更新状态
 		meta.State = "running"
+		meta.PID = pid
+		meta.PGID = fmt.Sprintf("%d", pid)
 		meta.StartedAt = time.Now().UTC().Format(time.RFC3339)
-		meta.PID = os.Getpid() // 简化：使用当前进程 PID
-		meta.PGID = fmt.Sprintf("%d", os.Getpid())
+		meta.Error = ""
+
 		if err := store.UpdateAgent(context.Background(), meta); err != nil {
 			return fmt.Errorf("update agent state: %w", err)
 		}
-		logger.Info("agent started", log.Field{Key: "state", Value: meta.State})
-		fmt.Printf("Agent '%s' started\n", name)
+
+		logger.Info("agent started", log.Field{Key: "state", Value: meta.State}, log.Field{Key: "pid", Value: pid})
+		fmt.Printf("Agent '%s' started (pid: %d)\n", name, pid)
 		return nil
 	}
 
@@ -195,7 +229,21 @@ func stopAgent(cfg *config.Config, args []string) error {
 		return fmt.Errorf("cannot stop agent in state: %s", meta.State)
 	}
 
-	// 停止 agent
+	// 创建容器运行时
+	factory := container.NewBwrapFactory()
+	c, err := factory.Create(name)
+	if err != nil {
+		return fmt.Errorf("create container: %w", err)
+	}
+	defer c.Close()
+
+	// 停止容器
+	grace := 5 * time.Second
+	if err := c.Stop(context.Background(), grace); err != nil {
+		logger.Warn("stop container error", log.Field{Key: "error", Value: err})
+	}
+
+	// 更新状态
 	meta.State = "stopped"
 	meta.StoppedAt = time.Now().UTC().Format(time.RFC3339)
 	meta.PID = 0

@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sync"
+	"syscall"
 
 	"keeper/internal/log"
 	"keeper/internal/storage"
@@ -150,6 +151,26 @@ func (s *Server) acceptLoop(ctx context.Context) {
 func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 	defer conn.Close()
 
+	// SO_PEERCRED 鉴权：获取客户端 UID
+	cred, err := getPeerCredentials(conn)
+	if err != nil {
+		s.logger.Error("failed to get peer credentials", log.Field{Key: "error", Value: err.Error()})
+		return
+	}
+
+	// 记录客户端 UID
+	s.logger.Info("client connected",
+		log.Field{Key: "pid", Value: cred.Pid},
+		log.Field{Key: "uid", Value: cred.Uid},
+		log.Field{Key: "gid", Value: cred.Gid})
+
+	// TODO: 可配置允许的 UID 列表
+	// 当前允许所有非系统用户（UID >= 1000）
+	if cred.Uid < 1000 {
+		s.logger.Warn("rejecting connection from system user", log.Field{Key: "uid", Value: cred.Uid})
+		return
+	}
+
 	decoder := json.NewDecoder(conn)
 	encoder := json.NewEncoder(conn)
 
@@ -166,6 +187,36 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 			return
 		}
 	}
+}
+
+// getPeerCredentials 获取 Unix socket 客户端凭证
+func getPeerCredentials(conn net.Conn) (*syscall.Ucred, error) {
+	// 仅支持 Unix socket
+	if _, ok := conn.LocalAddr().(*net.UnixAddr); !ok {
+		return nil, fmt.Errorf("not a unix socket")
+	}
+
+	// 获取底层文件描述符
+	file, ok := conn.(*net.UnixConn)
+	if !ok {
+		return nil, fmt.Errorf("not a unix conn")
+	}
+
+	// 通过 File() 获取 os.File 以访问文件描述符
+	// 注意：不要关闭返回的 os.File，它会自动由 net.UnixConn 管理
+	osFile, err := file.File()
+	if err != nil {
+		return nil, fmt.Errorf("get file from conn: %w", err)
+	}
+	defer osFile.Close()
+
+	// 使用 SO_PEERCRED 获取凭证
+	cred, err := syscall.GetsockoptUcred(int(osFile.Fd()), syscall.SOL_SOCKET, syscall.SO_PEERCRED)
+	if err != nil {
+		return nil, fmt.Errorf("getsockopt SO_PEERCRED: %w", err)
+	}
+
+	return cred, nil
 }
 
 // handleRequest 处理单个请求
