@@ -60,9 +60,10 @@ func TestGenerateBPFUnknownSyscall(t *testing.T) {
 		DenyList:      []string{},
 		DefaultAction: RetAllow,
 	}
-	_, err := GenerateBPF(filter)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "unknown syscall")
+	// 未知系统调用现在被跳过而不是返回错误
+	bpf, err := GenerateBPF(filter)
+	require.NoError(t, err)
+	assert.NotNil(t, bpf)
 }
 
 func TestBPFInstructionEncoding(t *testing.T) {

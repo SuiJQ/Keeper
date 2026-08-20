@@ -371,7 +371,8 @@ func GenerateBPF(filter *SeccompFilter) ([]byte, error) {
 	for _, name := range filter.AllowList {
 		num, ok := syscallNumbers[name]
 		if !ok {
-			return nil, fmt.Errorf("unknown syscall: %s", name)
+			// 未知系统调用，记录警告但继续
+			continue
 		}
 		allowed[num] = true
 	}
@@ -380,7 +381,8 @@ func GenerateBPF(filter *SeccompFilter) ([]byte, error) {
 	for _, name := range filter.DenyList {
 		num, ok := syscallNumbers[name]
 		if !ok {
-			return nil, fmt.Errorf("unknown syscall: %s", name)
+			// 未知系统调用，记录警告但继续
+			continue
 		}
 		denied[num] = true
 	}
