@@ -9,6 +9,14 @@ import (
 	"keeper/internal/log"
 )
 
+// bufferPool 复用缓冲区，减少 GC 压力
+var bufferPool = sync.Pool{
+	New: func() interface{} {
+		buf := make([]byte, 32*1024)
+		return &buf
+	},
+}
+
 // Forwarder 端口转发器
 type Forwarder struct {
 	mu           sync.Mutex
@@ -129,34 +137,21 @@ func (f *Forwarder) handleConnection(clientConn net.Conn, pf *PortForward) {
 	<-done
 }
 
-// ioCopy 双向数据复制（带超时）
+// ioCopy 双向数据复制（带超时，使用缓冲池）
 func ioCopy(dst, src net.Conn) {
-	buf := make([]byte, 32*1024)
-	for {
-		src.SetReadDeadline(time.Now().Add(30 * time.Second))
-		n, err := src.Read(buf)
-		if err != nil {
-			return
-		}
-		dst.SetWriteDeadline(time.Now().Add(30 * time.Second))
-		if _, err := dst.Write(buf[:n]); err != nil {
-			return
-		}
-	}
-}
+	bufPtr := bufferPool.Get().(*[]byte)
+	buf := *bufPtr
+	defer bufferPool.Put(bufPtr)
 
-// copyBuffer 使用 io.CopyBuffer 进行高效复制
-func copyBuffer(dst net.Conn, src net.Conn) error {
-	buf := make([]byte, 32*1024)
 	for {
 		src.SetReadDeadline(time.Now().Add(30 * time.Second))
 		n, err := src.Read(buf)
 		if err != nil {
-			return err
+			return
 		}
 		dst.SetWriteDeadline(time.Now().Add(30 * time.Second))
 		if _, err := dst.Write(buf[:n]); err != nil {
-			return err
+			return
 		}
 	}
 }
