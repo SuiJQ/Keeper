@@ -551,14 +551,24 @@ func copyPhysical(src, dst string) error {
 		if err != nil {
 			return err
 		}
-		defer srcFile.Close()
 		dstFile, err := os.Create(targetPath)
 		if err != nil {
+			srcFile.Close()
 			return err
 		}
-		defer dstFile.Close()
-		if _, err := io.Copy(dstFile, srcFile); err != nil {
-			return err
+		_, copyErr := io.Copy(dstFile, srcFile)
+		// 立即关闭文件，避免在 Walk 中累积文件描述符
+		srcFileCloseErr := srcFile.Close()
+		dstFileCloseErr := dstFile.Close()
+
+		if copyErr != nil {
+			return copyErr
+		}
+		if srcFileCloseErr != nil {
+			return srcFileCloseErr
+		}
+		if dstFileCloseErr != nil {
+			return dstFileCloseErr
 		}
 		// 保留权限
 		return os.Chmod(targetPath, info.Mode())

@@ -170,10 +170,23 @@ func (c *BwrapContainer) Exec(ctx context.Context, req ExecRequest) (*ExecRespon
 		cmd.Stderr = &stderr
 	}
 
-	// 设置环境变量
-	if len(req.Env) > 0 {
-		cmd.Env = append(os.Environ(), req.Env...)
+	// 设置环境变量：继承基础环境，但清除可能用于逃逸的变量
+	env := make([]string, 0, len(os.Environ())+len(req.Env))
+	skipPrefixes := []string{"LD_PRELOAD", "LD_LIBRARY_PATH", "LD_DEBUG", "LD_TRACE", "LD_AUDIT"}
+	for _, e := range os.Environ() {
+		skip := false
+		for _, prefix := range skipPrefixes {
+			if strings.HasPrefix(e, prefix+"=") {
+				skip = true
+				break
+			}
+		}
+		if !skip {
+			env = append(env, e)
+		}
 	}
+	env = append(env, req.Env...)
+	cmd.Env = env
 
 	err := cmd.Run()
 

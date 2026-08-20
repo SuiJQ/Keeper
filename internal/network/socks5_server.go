@@ -141,7 +141,13 @@ func (s *SOCKS5Server) handleUsernameAuth(conn net.Conn) {
 	username := string(buf[2 : 2+usernameLen])
 	password := string(buf[2+usernameLen : 2+usernameLen+passwordLen])
 
-	// 验证凭据
+	// 验证凭据：拒绝空凭据，防止误配置导致的认证绕过
+	if s.auth.Username == "" || s.auth.Password == "" {
+		s.logger.Warn("rejecting auth due to empty credentials configuration")
+		conn.Write([]byte{0x01, 0x01}) // 认证失败
+		return
+	}
+
 	if username == s.auth.Username && password == s.auth.Password {
 		conn.Write([]byte{0x01, 0x00}) // 认证成功
 		s.handleConnect(conn)

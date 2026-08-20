@@ -130,16 +130,8 @@ func (w *Watchdog) monitorLoop(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		default:
-			if ctx.Err() != nil {
-				return
-			}
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				w.checkAgents()
-			}
+		case <-ticker.C:
+			w.checkAgents()
 		}
 	}
 }
