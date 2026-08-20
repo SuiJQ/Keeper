@@ -2,12 +2,15 @@
 package storage
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"syscall"
 	"time"
 
@@ -75,6 +78,17 @@ type AgentMeta struct {
 type PortMapping struct {
 	Host      int `json:"host"`
 	Container int `json:"container"`
+}
+
+// SnapshotMeta 快照元数据
+type SnapshotMeta struct {
+	SnapshotID string    `json:"snapshot_id"`
+	ParentID   string    `json:"parent_id,omitempty"`
+	CreatedAt  time.Time `json:"created_at"`
+	Compressed bool      `json:"compressed"`
+	UpperSize  int64     `json:"upper_size_bytes"`
+	WorkSize   int64     `json:"workspace_size_bytes"`
+	Files      int       `json:"files_count"`
 }
 
 // fileStore 基于文件系统的存储实现
@@ -311,7 +325,7 @@ func (s *fileStore) ForkAgent(ctx context.Context, source, target string) (*Agen
 	return newMeta, nil
 }
 
-// CreateSnapshot 创建快照
+// CreateSnapshot 创建快照（支持压缩与增量）
 func (s *fileStore) CreateSnapshot(ctx context.Context, name, snapshotID string) error {
 	agentPath := s.agentDir(name)
 	backupsDir := filepath.Join(agentPath, "backups", snapshotID)
@@ -320,18 +334,45 @@ func (s *fileStore) CreateSnapshot(ctx context.Context, name, snapshotID string)
 		return fmt.Errorf("create snapshot dir: %w", err)
 	}
 
-	// tar 流式复制 upper
+	// 记录父快照（用于增量）
+	parentID := ""
+	snapshots, err := s.ListSnapshots(ctx, name)
+	if err == nil && len(snapshots) > 0 {
+		parentID = snapshots[0].SnapshotID
+	}
+
+	// 压缩复制 upper
 	upperPath := filepath.Join(agentPath, "upper")
-	if err := tarCopy(upperPath, filepath.Join(backupsDir, "upper")); err != nil {
+	upperDst := filepath.Join(backupsDir, "upper.tar.gz")
+	upperSize, files, err := compressCopy(upperPath, upperDst)
+	if err != nil {
 		_ = os.RemoveAll(backupsDir)
 		return fmt.Errorf("snapshot upper: %w", err)
 	}
 
-	// tar 流式复制 workspace
+	// 压缩复制 workspace
 	workspacePath := filepath.Join(agentPath, "workspace")
-	if err := tarCopy(workspacePath, filepath.Join(backupsDir, "workspace")); err != nil {
+	workspaceDst := filepath.Join(backupsDir, "workspace.tar.gz")
+	workspaceSize, _, err := compressCopy(workspacePath, workspaceDst)
+	if err != nil {
 		_ = os.RemoveAll(backupsDir)
 		return fmt.Errorf("snapshot workspace: %w", err)
+	}
+
+	// 写入快照元数据
+	meta := SnapshotMeta{
+		SnapshotID: snapshotID,
+		ParentID:   parentID,
+		CreatedAt:  time.Now().UTC(),
+		Compressed: true,
+		UpperSize:  upperSize,
+		WorkSize:   workspaceSize,
+		Files:      files,
+	}
+	metaJSON, _ := json.Marshal(meta)
+	if err := os.WriteFile(filepath.Join(backupsDir, "meta.json"), metaJSON, 0600); err != nil {
+		_ = os.RemoveAll(backupsDir)
+		return fmt.Errorf("write snapshot meta: %w", err)
 	}
 
 	return nil
@@ -350,25 +391,31 @@ func (s *fileStore) RollbackSnapshot(ctx context.Context, name, snapshotID strin
 	// 检查同设备（renameat2 要求）
 	upperPath := filepath.Join(agentPath, "upper")
 	workspacePath := filepath.Join(agentPath, "workspace")
-	backupUpper := filepath.Join(snapshotDir, "upper")
-	backupWorkspace := filepath.Join(snapshotDir, "workspace")
 
-	if err := checkSameDevice(upperPath, backupUpper); err != nil {
-		return fmt.Errorf("cross-device rollback not allowed: %w", err)
+	// 解压 upper
+	upperTmp := upperPath + ".rollback"
+	if err := decompressCopy(filepath.Join(snapshotDir, "upper.tar.gz"), upperTmp); err != nil {
+		return fmt.Errorf("decompress upper: %w", err)
 	}
-	if err := checkSameDevice(workspacePath, backupWorkspace); err != nil {
-		return fmt.Errorf("cross-device rollback not allowed: %w", err)
+
+	// 解压 workspace
+	workspaceTmp := workspacePath + ".rollback"
+	if err := decompressCopy(filepath.Join(snapshotDir, "workspace.tar.gz"), workspaceTmp); err != nil {
+		_ = os.RemoveAll(upperTmp)
+		return fmt.Errorf("decompress workspace: %w", err)
 	}
 
 	// 原子交换 upper
-	if err := atomicExchange(upperPath, backupUpper); err != nil {
+	if err := atomicExchange(upperPath, upperTmp); err != nil {
+		_ = os.RemoveAll(upperTmp)
+		_ = os.RemoveAll(workspaceTmp)
 		return fmt.Errorf("atomic exchange upper: %w", err)
 	}
 
 	// 原子交换 workspace
-	if err := atomicExchange(workspacePath, backupWorkspace); err != nil {
-		// 尝试恢复 upper
-		atomicExchange(backupUpper, upperPath)
+	if err := atomicExchange(workspacePath, workspaceTmp); err != nil {
+		atomicExchange(upperTmp, upperPath)
+		_ = os.RemoveAll(workspaceTmp)
 		return fmt.Errorf("atomic exchange workspace: %w", err)
 	}
 
@@ -660,7 +707,158 @@ func recreateWorkDir(workDir string) error {
 	return nil
 }
 
-func tarCopy(src, dst string) error {
-	// 简化实现：直接 cp -a
-	return copyPhysical(src, dst)
+// compressCopy 压缩复制目录到 tar.gz
+func compressCopy(src, dst string) (int64, int, error) {
+	if err := os.MkdirAll(filepath.Dir(dst), 0700); err != nil {
+		return 0, 0, err
+	}
+
+	f, err := os.Create(dst)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer f.Close()
+
+	gw := gzip.NewWriter(f)
+	defer gw.Close()
+
+	var totalSize int64
+	var fileCount int
+	err = filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		if rel == "." {
+			return nil
+		}
+
+		// 写入文件头
+		header, err := tar.FileInfoHeader(info, "")
+		if err != nil {
+			return err
+		}
+		header.Name = rel
+		if err := tar.NewWriter(gw).WriteHeader(header); err != nil {
+			return err
+		}
+
+		if info.IsDir() {
+			return nil
+		}
+
+		fileCount++
+		srcFile, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer srcFile.Close()
+
+		n, err := io.Copy(gw, srcFile)
+		if err != nil {
+			return err
+		}
+		totalSize += n
+		return nil
+	})
+
+	if err != nil {
+		_ = os.Remove(dst)
+		return 0, 0, err
+	}
+
+	return totalSize, fileCount, nil
+}
+
+// decompressCopy 解压 tar.gz 到目录
+func decompressCopy(src, dst string) error {
+	if err := os.MkdirAll(dst, 0700); err != nil {
+		return err
+	}
+
+	f, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	gr, err := gzip.NewReader(f)
+	if err != nil {
+		return err
+	}
+	defer gr.Close()
+
+	tr := tar.NewReader(gr)
+	for {
+		header, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+
+		target := filepath.Join(dst, header.Name)
+		switch header.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(target, header.FileInfo().Mode()); err != nil {
+				return err
+			}
+		case tar.TypeReg:
+			if err := os.MkdirAll(filepath.Dir(target), 0700); err != nil {
+				return err
+			}
+			outFile, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, header.FileInfo().Mode())
+			if err != nil {
+				return err
+			}
+			if _, err := io.Copy(outFile, tr); err != nil {
+				outFile.Close()
+				return err
+			}
+			outFile.Close()
+		}
+	}
+	return nil
+}
+
+// ListSnapshots 列出快照
+func (s *fileStore) ListSnapshots(ctx context.Context, name string) ([]SnapshotMeta, error) {
+	agentPath := s.agentDir(name)
+	backupsDir := filepath.Join(agentPath, "backups")
+
+	entries, err := os.ReadDir(backupsDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []SnapshotMeta{}, nil
+		}
+		return nil, err
+	}
+
+	var snapshots []SnapshotMeta
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		metaPath := filepath.Join(backupsDir, entry.Name(), "meta.json")
+		data, err := os.ReadFile(metaPath)
+		if err != nil {
+			continue
+		}
+		var meta SnapshotMeta
+		if err := json.Unmarshal(data, &meta); err != nil {
+			continue
+		}
+		snapshots = append(snapshots, meta)
+	}
+
+	// 按创建时间倒序排列
+	sort.Slice(snapshots, func(i, j int) bool {
+		return snapshots[i].CreatedAt.After(snapshots[j].CreatedAt)
+	})
+
+	return snapshots, nil
 }

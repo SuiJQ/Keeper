@@ -384,10 +384,10 @@ func TestSnapshotAndRollback(t *testing.T) {
 	// 验证快照已创建
 	snapshotDir := filepath.Join(tmpDir, "agents", "test-agent", "backups", "snap1")
 	assert.DirExists(t, snapshotDir)
-	// 快照是目录复制，不是 tar 文件
-	assert.DirExists(t, filepath.Join(snapshotDir, "upper"))
-	assert.DirExists(t, filepath.Join(snapshotDir, "workspace"))
-	assert.FileExists(t, filepath.Join(snapshotDir, "workspace", "file.txt"))
+	// 快照现在是压缩的 tar.gz 文件
+	assert.FileExists(t, filepath.Join(snapshotDir, "upper.tar.gz"))
+	assert.FileExists(t, filepath.Join(snapshotDir, "workspace.tar.gz"))
+	assert.FileExists(t, filepath.Join(snapshotDir, "meta.json"))
 
 	// 修改文件
 	err = os.WriteFile(filepath.Join(workspace, "file.txt"), []byte("modified"), 0644)
