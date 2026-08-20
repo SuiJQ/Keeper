@@ -16,6 +16,7 @@ import (
 	"keeper/internal/bootstrap"
 	"keeper/internal/errors"
 	"keeper/internal/log"
+	"keeper/internal/seccomp"
 )
 
 // BwrapContainer bwrap 容器运行时实现
@@ -437,7 +438,17 @@ func readSystemBootTime() (int64, error) {
 }
 
 func writeSeccompBPF(filename string, bpf []byte) error {
-	// 简化实现：直接写入文件
-	// 实际应该生成 BPF 程序
-	return os.WriteFile(filename, bpf, 0644)
+	// 如果传入的是预生成的 BPF 数据，直接写入
+	if len(bpf) > 0 {
+		return os.WriteFile(filename, bpf, 0644)
+	}
+
+	// 否则使用默认过滤器生成 BPF 程序
+	filter := seccomp.NewDefaultFilter()
+	generatedBPF, err := seccomp.GenerateBPF(filter)
+	if err != nil {
+		return fmt.Errorf("generate seccomp bpf: %w", err)
+	}
+
+	return os.WriteFile(filename, generatedBPF, 0644)
 }
