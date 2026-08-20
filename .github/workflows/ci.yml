@@ -122,7 +122,7 @@ jobs:
       - name: Build and verify
         run: |
           go build -o bin/keeper ./cmd/keeper
-          ./bin/keeper --version
+          ./bin/keeper version
 
   bootstrap:
     name: Bootstrap probe
