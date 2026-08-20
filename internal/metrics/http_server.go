@@ -1,0 +1,104 @@
+// Package metrics 提供指标导出能力
+package metrics
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"sync"
+)
+
+// HTTPServer 指标 HTTP 服务器
+type HTTPServer struct {
+	addr    string
+	server  *http.Server
+	mu      sync.RWMutex
+	running bool
+}
+
+// NewHTTPServer 创建指标 HTTP 服务器
+func NewHTTPServer(addr string) *HTTPServer {
+	return &HTTPServer{
+		addr: addr,
+	}
+}
+
+// Start 启动 HTTP 服务器
+func (s *HTTPServer) Start() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.running {
+		return nil
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
+		fmt.Fprint(w, PrometheusFormat())
+	})
+
+	s.server = &http.Server{
+		Addr:    s.addr,
+		Handler: mux,
+	}
+
+	go func() {
+		if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			// 记录错误但不panic
+			fmt.Printf("metrics server error: %v\n", err)
+		}
+	}()
+
+	s.running = true
+	return nil
+}
+
+// Stop 停止 HTTP 服务器
+func (s *HTTPServer) Stop(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if !s.running || s.server == nil {
+		return nil
+	}
+
+	s.running = false
+	return s.server.Shutdown(ctx)
+}
+
+// IsRunning 检查服务器是否运行中
+func (s *HTTPServer) IsRunning() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.running
+}
+
+// Addr 返回服务器地址
+func (s *HTTPServer) Addr() string {
+	return s.addr
+}
+
+// 全局 HTTP 服务器
+var (
+	defaultHTTPServer *HTTPServer
+	httpServerOnce    sync.Once
+)
+
+// GetHTTPServer 获取全局 HTTP 服务器
+func GetHTTPServer() *HTTPServer {
+	httpServerOnce.Do(func() {
+		defaultHTTPServer = NewHTTPServer(":9090")
+	})
+	return defaultHTTPServer
+}
+
+// StartMetricsServer 启动全局指标服务器
+func StartMetricsServer() error {
+	return GetHTTPServer().Start()
+}
+
+// StopMetricsServer 停止全局指标服务器
+func StopMetricsServer(ctx context.Context) error {
+	return GetHTTPServer().Stop(ctx)
+}

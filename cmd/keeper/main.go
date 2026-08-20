@@ -14,6 +14,7 @@ import (
 	"keeper/internal/container"
 	"keeper/internal/log"
 	"keeper/internal/mcp"
+	"keeper/internal/metrics"
 	"keeper/internal/storage"
 	"keeper/internal/watchdog"
 	"keeper/pkg/config"
@@ -389,7 +390,22 @@ func runAgentCommand(cfg *config.Config, args []string) error {
 	}
 	defer wd.Stop()
 
-	logger.Info("agent running (MCP + Watchdog active)")
+	// 启动指标服务器
+	metricsServer := metrics.NewHTTPServer(":9090")
+	if err := metricsServer.Start(); err != nil {
+		return fmt.Errorf("start metrics server: %w", err)
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		metricsServer.Stop(shutdownCtx)
+	}()
+
+	// 记录 agent 启动指标
+	agentStartCounter := metrics.RegisterCounter("keeper_agent_starts_total", "Total number of agent starts", []string{"agent_name", "state"})
+	agentStartCounter.Inc(name, "created")
+
+	logger.Info("agent running (MCP + Watchdog + Metrics active)")
 	fmt.Printf("Agent '%s' is running (pid: %d)\n", name, meta.PID)
 	fmt.Println("Press Ctrl+C to stop")
 
