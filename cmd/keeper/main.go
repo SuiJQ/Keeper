@@ -698,6 +698,14 @@ func parseAgentPath(s string) (string, string, bool) {
 		return "", "", false
 	}
 
+	// 清理路径，防止路径遍历
+	path = filepath.Clean(path)
+
+	// 如果清理后路径包含 ".."，拒绝请求
+	if strings.Contains(path, "..") {
+		return "", "", false
+	}
+
 	// 如果用户输入了容器内的 /workspace 前缀，去掉它
 	// 支持 /workspace/ 和 /workspace 两种形式
 	if strings.HasPrefix(path, "/workspace/") {
