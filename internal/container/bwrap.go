@@ -30,6 +30,16 @@ type BwrapContainer struct {
 	overlayStrat OverlayStrategy
 }
 
+// SetSeccompStrategy 设置 Seccomp 策略
+func (c *BwrapContainer) SetSeccompStrategy(strategy SeccompStrategy) {
+	c.seccompStrat = strategy
+}
+
+// SetOverlayStrategy 设置 Overlay 策略
+func (c *BwrapContainer) SetOverlayStrategy(strategy OverlayStrategy) {
+	c.overlayStrat = strategy
+}
+
 // BwrapFactory bwrap 容器运行时工厂
 type BwrapFactory struct{}
 

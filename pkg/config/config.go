@@ -51,6 +51,12 @@ type Config struct {
 	// MCPAllowedGIDs MCP Server 允许的 GID 列表
 	MCPAllowedGIDs []uint32 `json:"mcp_allowed_gids"`
 
+	// SeccompStrategy Seccomp BPF 策略（default/whitelist/blacklist/allow_all）
+	SeccompStrategy string `json:"seccomp_strategy"`
+
+	// OverlayStrategy OverlayFS 挂载策略（default/overlayfs）
+	OverlayStrategy string `json:"overlay_strategy"`
+
 	// file 配置文件路径（不序列化）
 	file string
 

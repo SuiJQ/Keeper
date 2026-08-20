@@ -605,6 +605,48 @@ func NewDefaultFilter() *SeccompFilter {
 	}
 }
 
+// NewWhitelistFilter 创建白名单过滤器（只允许指定系统调用）
+func NewWhitelistFilter() *SeccompFilter {
+	return &SeccompFilter{
+		AllowList: []string{
+			"read", "write", "close", "mmap", "munmap", "brk",
+			"getpid", "getppid", "getuid", "getgid", "geteuid", "getegid",
+			"exit", "wait4",
+			"open", "openat", "creat", "unlink", "unlinkat", "stat", "fstat",
+			"faccessat", "readlink", "readlinkat",
+			"time", "gettimeofday", "clock_gettime", "nanosleep",
+			"rt_sigaction", "rt_sigprocmask", "rt_sigreturn",
+			"socket", "bind", "listen", "accept", "connect", "sendto", "recvfrom",
+			"shutdown", "getsockname", "getpeername",
+			"mprotect", "madvise",
+			"ioctl", "poll", "select", "pselect6",
+			"epoll_create", "epoll_create1", "epoll_ctl", "epoll_wait",
+			"pipe", "pipe2", "dup", "dup2", "dup3",
+			"fcntl", "flock", "fsync", "fdatasync",
+			"getrandom", "gettid",
+			"setns", "unshare",
+			"prctl", "capget", "capset",
+		},
+		DefaultAction: RetErrno,
+	}
+}
+
+// NewBlacklistFilter 创建黑名单过滤器（拒绝指定系统调用）
+func NewBlacklistFilter() *SeccompFilter {
+	return &SeccompFilter{
+		DenyList: []string{
+			"reboot", "mount", "umount", "swapon", "swapoff",
+			"pivot_root", "chroot", "create_module", "delete_module",
+			"init_module", "finit_module", "kexec_load", "syslog",
+			"iopl", "ioperm", "modify_ldt", "ptrace", "process_vm_readv",
+			"process_vm_writev", "kcmp", "pidfd_send_signal",
+			"kexec_file_load", "bpf", "userfaultfd", "landlock_create_ruleset",
+			"landlock_add_rule", "landlock_restrict_self",
+		},
+		DefaultAction: RetAllow,
+	}
+}
+
 // GetSyscallNumber 获取系统调用号
 func GetSyscallNumber(name string) (uint32, bool) {
 	num, ok := syscallNumbers[name]

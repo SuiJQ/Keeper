@@ -247,6 +247,20 @@ func stopAgent(cfg *config.Config, args []string) error {
 	}
 	defer c.Close()
 
+	// 根据配置设置策略
+	if bc, ok := c.(*container.BwrapContainer); ok {
+		if seccompStrat, err := container.NewSeccompStrategy(cfg.SeccompStrategy, logger); err != nil {
+			logger.Warn("invalid seccomp strategy, using default", log.Field{Key: "error", Value: err.Error()})
+		} else {
+			bc.SetSeccompStrategy(seccompStrat)
+		}
+		if overlayStrat, err := container.NewOverlayStrategy(cfg.OverlayStrategy, logger); err != nil {
+			logger.Warn("invalid overlay strategy, using default", log.Field{Key: "error", Value: err.Error()})
+		} else {
+			bc.SetOverlayStrategy(overlayStrat)
+		}
+	}
+
 	// 停止容器
 	grace := 5 * time.Second
 	if err := c.Stop(context.Background(), grace); err != nil {
@@ -327,6 +341,20 @@ func runAgentCommand(cfg *config.Config, args []string) error {
 		return fmt.Errorf("create container: %w", err)
 	}
 	defer c.Close()
+
+	// 根据配置设置策略
+	if bc, ok := c.(*container.BwrapContainer); ok {
+		if seccompStrat, err := container.NewSeccompStrategy(cfg.SeccompStrategy, logger); err != nil {
+			logger.Warn("invalid seccomp strategy, using default", log.Field{Key: "error", Value: err.Error()})
+		} else {
+			bc.SetSeccompStrategy(seccompStrat)
+		}
+		if overlayStrat, err := container.NewOverlayStrategy(cfg.OverlayStrategy, logger); err != nil {
+			logger.Warn("invalid overlay strategy, using default", log.Field{Key: "error", Value: err.Error()})
+		} else {
+			bc.SetOverlayStrategy(overlayStrat)
+		}
+	}
 
 	// 启动 MCP Server（使用配置中的授权设置）
 	mcpServer, err := mcp.NewServer(mcp.ServerConfig{
