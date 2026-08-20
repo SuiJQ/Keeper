@@ -62,8 +62,19 @@ func (c *BwrapContainer) Start(ctx context.Context, spec ContainerSpec) (int, er
 		return 0, err
 	}
 
-	// 构建 bwrap 参数
-	args := c.buildArgs(spec)
+	// 构建 bwrap 参数，并收集 Seccomp BPF 临时文件路径
+	args, bpfFile := c.buildArgs(spec)
+
+	// 清理 Seccomp BPF 临时文件
+	if bpfFile != "" {
+		defer func() {
+			if err := os.Remove(bpfFile); err != nil && !os.IsNotExist(err) {
+				c.logger.Warn("failed to remove seccomp bpf file",
+					log.Field{Key: "file", Value: bpfFile},
+					log.Field{Key: "error", Value: err.Error()})
+			}
+		}()
+	}
 
 	// 创建命令
 	cmd := exec.CommandContext(ctx, "bwrap", args...)
@@ -264,9 +275,10 @@ func (c *BwrapContainer) checkKernelSupport() bool {
 	return result.OverlayUserNS && result.BwrapAvailable
 }
 
-// buildArgs 构建 bwrap 参数
-func (c *BwrapContainer) buildArgs(spec ContainerSpec) []string {
+// buildArgs 构建 bwrap 参数，返回参数列表和 Seccomp BPF 临时文件路径（如果有）
+func (c *BwrapContainer) buildArgs(spec ContainerSpec) ([]string, string) {
 	var args []string
+	var bpfFile string
 
 	// 基本参数
 	args = append(args, "--unshare-all")
@@ -309,16 +321,19 @@ func (c *BwrapContainer) buildArgs(spec ContainerSpec) []string {
 
 	// Seccomp BPF（简化实现：写入临时文件后通过 --seccomp 加载）
 	if len(spec.SeccompBPF) > 0 {
-		bpfFile := filepath.Join(os.TempDir(), fmt.Sprintf("seccomp-%d.bpf", os.Getpid()))
+		bpfFile = filepath.Join(os.TempDir(), fmt.Sprintf("seccomp-%d.bpf", os.Getpid()))
 		if err := writeSeccompBPF(bpfFile, spec.SeccompBPF); err == nil {
 			args = append(args, "--seccomp="+bpfFile)
+		} else {
+			// 写入失败，清空路径避免清理时误删
+			bpfFile = ""
 		}
 	}
 
 	// 默认 shell
 	args = append(args, "--", "/bin/sh", "-c", "sleep infinity")
 
-	return args
+	return args, bpfFile
 }
 
 // 辅助函数

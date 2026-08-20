@@ -95,7 +95,7 @@ func TestBuildArgs(t *testing.T) {
 		SeccompBPF: []byte{0x01, 0x02, 0x03},
 	}
 
-	args := bwrap.buildArgs(spec)
+	args, _ := bwrap.buildArgs(spec)
 
 	// 基本参数
 	assert.Contains(t, args, "--unshare-all")
@@ -180,7 +180,7 @@ func TestBuildArgsMinimal(t *testing.T) {
 		WorkDir:  "/work",
 	}
 
-	args := bwrap.buildArgs(spec)
+	args, _ := bwrap.buildArgs(spec)
 
 	// 基本参数
 	assert.Contains(t, args, "--unshare-all")
@@ -218,7 +218,7 @@ func TestBuildArgsWithPorts(t *testing.T) {
 		Ports:    []PortMapping{{Host: 8080, Container: 80}, {Host: 8443, Container: 443}},
 	}
 
-	args := bwrap.buildArgs(spec)
+	args, _ := bwrap.buildArgs(spec)
 
 	// bwrap 不直接支持端口映射，所以 ports 不应该出现在参数中
 	assert.NotContains(t, args, "8080")
