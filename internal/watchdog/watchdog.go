@@ -5,23 +5,31 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"keeper/internal/log"
 	"keeper/internal/errors"
 )
 
+// AgentInfo 被监控的 Agent 信息
+type AgentInfo struct {
+	Name      string
+	PID       int
+	StartedAt time.Time
+}
+
 // Watchdog 看门狗监控器
 type Watchdog struct {
-	mu        sync.Mutex
-	running   bool
-	cancel    context.CancelFunc
-	logger    log.Logger
-	timeout   time.Duration
+	mu            sync.Mutex
+	running       bool
+	cancel        context.CancelFunc
+	logger        log.Logger
+	timeout       time.Duration
 	checkInterval time.Duration
+	agents        map[string]*AgentInfo
 }
 
 // WatchdogConfig 看门狗配置
@@ -46,6 +54,7 @@ func NewWatchdog(cfg WatchdogConfig, logger log.Logger) *Watchdog {
 		logger:        logger,
 		timeout:       cfg.Timeout,
 		checkInterval: cfg.CheckInterval,
+		agents:        make(map[string]*AgentInfo),
 	}
 }
 
@@ -62,7 +71,7 @@ func (w *Watchdog) Start(ctx context.Context) error {
 	w.cancel = cancel
 	w.running = true
 
-	w.logger.Info("watchdog started", 
+	w.logger.Info("watchdog started",
 		log.Field{Key: "timeout", Value: w.timeout},
 		log.Field{Key: "check_interval", Value: w.checkInterval})
 
@@ -87,6 +96,31 @@ func (w *Watchdog) Stop() {
 	w.logger.Info("watchdog stopped")
 }
 
+// RegisterAgent 注册 agent 到看门狗
+func (w *Watchdog) RegisterAgent(name string, pid int) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	w.agents[name] = &AgentInfo{
+		Name:      name,
+		PID:       pid,
+		StartedAt: time.Now(),
+	}
+
+	w.logger.Info("agent registered with watchdog",
+		log.Field{Key: "agent", Value: name},
+		log.Field{Key: "pid", Value: pid})
+}
+
+// UnregisterAgent 从看门狗注销 agent
+func (w *Watchdog) UnregisterAgent(name string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	delete(w.agents, name)
+	w.logger.Info("agent unregistered from watchdog", log.Field{Key: "agent", Value: name})
+}
+
 // monitorLoop 监控循环
 func (w *Watchdog) monitorLoop(ctx context.Context) {
 	ticker := time.NewTicker(w.checkInterval)
@@ -97,7 +131,6 @@ func (w *Watchdog) monitorLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		default:
-			// 检查 context 是否已取消
 			if ctx.Err() != nil {
 				return
 			}
@@ -113,24 +146,120 @@ func (w *Watchdog) monitorLoop(ctx context.Context) {
 
 // checkAgents 检查所有 agent 状态
 func (w *Watchdog) checkAgents() {
-	// TODO: 从 storage 获取所有 agent 列表
-	// 检查每个 agent 的启动时间和状态
-	// 如果运行时间超过 timeout，触发终止逻辑
-	w.logger.Debug("watchdog checking agents")
+	w.mu.Lock()
+	agents := make([]*AgentInfo, 0, len(w.agents))
+	for _, info := range w.agents {
+		agents = append(agents, info)
+	}
+	w.mu.Unlock()
+
+	for _, info := range agents {
+		w.checkAgent(info)
+	}
+}
+
+// checkAgent 检查单个 agent 状态
+func (w *Watchdog) checkAgent(info *AgentInfo) {
+	// 检查进程是否还存在
+	if !isProcessAlive(info.PID) {
+		w.logger.Warn("agent process not found",
+			log.Field{Key: "agent", Value: info.Name},
+			log.Field{Key: "pid", Value: info.PID})
+		w.UnregisterAgent(info.Name)
+		return
+	}
+
+	// 检查运行时间是否超时
+	elapsed := time.Since(info.StartedAt)
+	if elapsed > w.timeout {
+		w.logger.Warn("agent timeout exceeded",
+			log.Field{Key: "agent", Value: info.Name},
+			log.Field{Key: "pid", Value: info.PID},
+			log.Field{Key: "elapsed", Value: elapsed},
+			log.Field{Key: "timeout", Value: w.timeout})
+
+		// 触发停止
+		if err := w.TriggerStop(info.Name); err != nil {
+			w.logger.Error("failed to stop timed out agent",
+				log.Field{Key: "agent", Value: info.Name},
+				log.Field{Key: "error", Value: err})
+		}
+
+		w.UnregisterAgent(info.Name)
+		return
+	}
+
+	// 检查 D 态
+	if w.DetectDState(info.PID) {
+		w.logger.Error("agent in D state",
+			log.Field{Key: "agent", Value: info.Name},
+			log.Field{Key: "pid", Value: info.PID})
+
+		if err := w.RecoverDState(info.Name); err != nil {
+			w.logger.Error("D state recovery failed",
+				log.Field{Key: "agent", Value: info.Name},
+				log.Field{Key: "error", Value: err})
+		}
+
+		w.UnregisterAgent(info.Name)
+	}
+}
+
+// isProcessAlive 检查进程是否存活
+func isProcessAlive(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+
+	// 发送信号 0 检查进程是否存在
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+
+	// 在 Unix 系统上，Signal(nil) 或 Signal(0) 不实际发送信号
+	// 但 err 表示进程不存在
+	err = proc.Signal(os.Signal(nil))
+	return err == nil
 }
 
 // TriggerStop 触发 agent 停止
 func (w *Watchdog) TriggerStop(agentName string) error {
 	w.logger.Info("watchdog triggering stop", log.Field{Key: "agent", Value: agentName})
 
-	// 使用 systemd-run 或直接 kill 进程组
-	// 这里简化实现：使用 pkill
-	cmd := exec.Command("pkill", "-f", agentName)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		w.logger.Error("failed to stop agent",
-			log.Field{Key: "agent", Value: agentName},
-			log.Field{Key: "error", Value: string(output)})
-		return fmt.Errorf("stop agent %s: %w", agentName, err)
+	// 查找 agent PID
+	w.mu.Lock()
+	info, exists := w.agents[agentName]
+	w.mu.Unlock()
+
+	if !exists {
+		return fmt.Errorf("agent %s not registered", agentName)
+	}
+
+	// 优雅关闭：先尝试 SIGTERM
+	if err := info.signalProcess(syscall.SIGTERM); err != nil {
+		w.logger.Warn("failed to send SIGTERM", log.Field{Key: "error", Value: err.Error()})
+	}
+
+	// 等待优雅关闭或超时
+	done := make(chan error, 1)
+	go func() {
+		_, err := syscall.Wait4(info.PID, nil, 0, nil)
+		done <- err
+	}()
+
+	select {
+	case <-time.After(5 * time.Second):
+		// 超时，强制终止
+		w.logger.Warn("grace period exceeded, force killing")
+		if err := info.signalProcess(syscall.SIGKILL); err != nil {
+			return fmt.Errorf("force kill: %w", err)
+		}
+		<-done
+	case err := <-done:
+		if err != nil {
+			w.logger.Error("error waiting for process", log.Field{Key: "error", Value: err})
+		}
 	}
 
 	w.logger.Info("agent stopped by watchdog", log.Field{Key: "agent", Value: agentName})
@@ -141,13 +270,17 @@ func (w *Watchdog) TriggerStop(agentName string) error {
 func (w *Watchdog) ForceStop(agentName string) error {
 	w.logger.Warn("watchdog force stopping agent", log.Field{Key: "agent", Value: agentName})
 
+	w.mu.Lock()
+	info, exists := w.agents[agentName]
+	w.mu.Unlock()
+
+	if !exists {
+		return fmt.Errorf("agent %s not registered", agentName)
+	}
+
 	// 强制终止：SIGKILL
-	cmd := exec.Command("pkill", "-9", "-f", agentName)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		w.logger.Error("failed to force stop agent",
-			log.Field{Key: "agent", Value: agentName},
-			log.Field{Key: "error", Value: string(output)})
-		return fmt.Errorf("force stop agent %s: %w", agentName, err)
+	if err := info.signalProcess(syscall.SIGKILL); err != nil {
+		return fmt.Errorf("force kill: %w", err)
 	}
 
 	w.logger.Info("agent force stopped by watchdog", log.Field{Key: "agent", Value: agentName})
@@ -156,7 +289,6 @@ func (w *Watchdog) ForceStop(agentName string) error {
 
 // DetectDState 检测不可中断 I/O 阻塞
 func (w *Watchdog) DetectDState(pid int) bool {
-	// 读取 /proc/<pid>/status 中的 State 字段
 	path := fmt.Sprintf("/proc/%d/status", pid)
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -181,7 +313,6 @@ func (w *Watchdog) RecoverDState(agentName string) error {
 	w.logger.Error("detected D state, manual intervention required",
 		log.Field{Key: "agent", Value: agentName})
 
-	// 返回致命错误，触发看门狗报告
 	return errors.NewKeeperError(
 		errors.ErrCodeFatalDState,
 		fmt.Sprintf("agent %s is in uninterruptible I/O state (D state), restart host required", agentName),
@@ -189,7 +320,21 @@ func (w *Watchdog) RecoverDState(agentName string) error {
 	)
 }
 
-// 以下为辅助变量
+// signalProcess 向进程发送信号
+func (a *AgentInfo) signalProcess(sig os.Signal) error {
+	if a.PID <= 0 {
+		return fmt.Errorf("invalid pid: %d", a.PID)
+	}
+
+	proc, err := os.FindProcess(a.PID)
+	if err != nil {
+		return err
+	}
+
+	return proc.Signal(sig)
+}
+
+// 以下为辅助变量（便于测试）
 var osReadFile = os.ReadFile
 var bufioNewScanner = bufio.NewScanner
 var stringsNewReader = strings.NewReader
