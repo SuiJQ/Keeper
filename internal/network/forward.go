@@ -34,9 +34,16 @@ func (f *Forwarder) AddForward(pf *PortForward) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	// 检查端口是否被占用
+	// 检查端口是否已被占用（系统级）
 	if IsPortInUse(pf.Host) {
 		return fmt.Errorf("host port %d already in use", pf.Host)
+	}
+
+	// 检查是否已在转发列表中
+	for _, existing := range f.portForwards {
+		if existing.Host == pf.Host {
+			return fmt.Errorf("host port %d already forwarded", pf.Host)
+		}
 	}
 
 	f.portForwards = append(f.portForwards, pf)

@@ -25,8 +25,9 @@ func NewSOCKS5Server(addr string, auth *ProxyAuth, logger log.Logger) *SOCKS5Ser
 		logger = log.Global()
 	}
 	return &SOCKS5Server{
-		addr: addr,
-		auth: auth,
+		addr:    addr,
+		auth:    auth,
+		logger:  logger,
 	}
 }
 
@@ -236,5 +237,11 @@ func (s *SOCKS5Server) IsRunning() bool {
 
 // Addr 返回监听地址
 func (s *SOCKS5Server) Addr() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.listener != nil {
+		return s.listener.Addr().String()
+	}
 	return s.addr
 }
