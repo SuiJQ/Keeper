@@ -91,3 +91,38 @@ func TestCheckConfigFile(t *testing.T) {
 	result := checkConfigFile("/boot/config-nonexistent", "CONFIG_OVERLAY_FS_USERNS=y")
 	assert.False(t, result)
 }
+
+func TestProbeReportJSON(t *testing.T) {
+	result := &ProbeResult{
+		KernelVersion:    "5.15.0-76-generic",
+		OverlayUserNS:    true,
+		BwrapAvailable:   true,
+		SeccompAvailable: true,
+		UnshareAvailable: true,
+	}
+	report := result.ProbeReport()
+	assert.Contains(t, report, "KernelVersion")
+	assert.Contains(t, report, "5.15.0-76-generic")
+	assert.Contains(t, report, "OverlayUserNS")
+	assert.Contains(t, report, "BwrapAvailable")
+	assert.Contains(t, report, "true")
+}
+
+func TestCheckSeccomp(t *testing.T) {
+	// checkSeccomp 应该返回布尔值
+	result := checkSeccomp()
+	assert.IsType(t, true, result)
+}
+
+func TestProbeEnvironmentResult(t *testing.T) {
+	result := ProbeEnvironment()
+
+	// 验证所有字段都已填充
+	assert.NotEmpty(t, result.KernelVersion)
+	assert.NotNil(t, result.MissingFeatures)
+	assert.NotNil(t, result.Errors)
+
+	// 验证 IsSupported 与探测结果一致
+	expected := result.OverlayUserNS && result.BwrapAvailable
+	assert.Equal(t, expected, result.IsSupported())
+}
