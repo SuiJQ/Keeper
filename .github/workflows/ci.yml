@@ -91,9 +91,6 @@ jobs:
           go-version: '1.21'
           cache: true
 
-      - name: Install bubblewrap
-        run: sudo apt-get install -y bubblewrap
-
       - name: Check kernel version
         run: |
           KERNEL=$(uname -r)
@@ -126,3 +123,27 @@ jobs:
         run: |
           go build -o bin/keeper ./cmd/keeper
           ./bin/keeper --version
+
+  bootstrap:
+    name: Bootstrap probe
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+          cache: true
+
+      - name: Install dependencies
+        run: sudo apt-get install -y bubblewrap libseccomp-dev
+
+      - name: Run bootstrap tests
+        run: go test -v ./internal/bootstrap/...
+
+      - name: Run environment probe
+        run: |
+          PROBE_OUTPUT=$(go run ./internal/bootstrap/probe.go 2>/dev/null || echo '{"error": "probe failed"}')
+          echo "Probe result: $PROBE_OUTPUT"
