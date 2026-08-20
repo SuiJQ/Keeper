@@ -262,6 +262,47 @@ func TestRollbackAgentMissingArgs(t *testing.T) {
 	assert.Contains(t, err.Error(), "usage: keeper rollback <name> <snapshot-id>")
 }
 
+func TestSnapshotAndRollback(t *testing.T) {
+	tmpDir, _ := setupTestConfig(t)
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	// 创建 agent
+	require.NoError(t, createAgent(cfg, []string{"test-agent"}))
+
+	// 写入一些文件到 workspace
+	workspace := filepath.Join(tmpDir, "agents", "test-agent", "workspace")
+	err = os.MkdirAll(workspace, 0755)
+	require.NoError(t, err)
+	err = os.WriteFile(filepath.Join(workspace, "file.txt"), []byte("hello"), 0644)
+	require.NoError(t, err)
+
+	// 创建快照
+	err = snapshotAgent(cfg, []string{"test-agent", "snap1"})
+	require.NoError(t, err)
+
+	// 验证快照已创建
+	snapshotDir := filepath.Join(tmpDir, "agents", "test-agent", "backups", "snap1")
+	assert.DirExists(t, snapshotDir)
+	// 快照是目录复制，不是 tar 文件
+	assert.DirExists(t, filepath.Join(snapshotDir, "upper"))
+	assert.DirExists(t, filepath.Join(snapshotDir, "workspace"))
+	assert.FileExists(t, filepath.Join(snapshotDir, "workspace", "file.txt"))
+
+	// 修改文件
+	err = os.WriteFile(filepath.Join(workspace, "file.txt"), []byte("modified"), 0644)
+	require.NoError(t, err)
+
+	// 回滚快照
+	err = rollbackAgent(cfg, []string{"test-agent", "snap1"})
+	require.NoError(t, err)
+
+	// 验证文件已恢复
+	content, err := os.ReadFile(filepath.Join(workspace, "file.txt"))
+	require.NoError(t, err)
+	assert.Equal(t, []byte("hello"), content)
+}
+
 func TestStartStopStatusRecover(t *testing.T) {
 	tmpDir, _ := setupTestConfig(t)
 	cfg, err := config.Load(tmpDir)

@@ -345,14 +345,27 @@ func (s *fileStore) RollbackSnapshot(ctx context.Context, name, snapshotID strin
 
 	// 检查同设备（renameat2 要求）
 	upperPath := filepath.Join(agentPath, "upper")
+	workspacePath := filepath.Join(agentPath, "workspace")
 	backupUpper := filepath.Join(snapshotDir, "upper")
+	backupWorkspace := filepath.Join(snapshotDir, "workspace")
+
 	if err := checkSameDevice(upperPath, backupUpper); err != nil {
+		return fmt.Errorf("cross-device rollback not allowed: %w", err)
+	}
+	if err := checkSameDevice(workspacePath, backupWorkspace); err != nil {
 		return fmt.Errorf("cross-device rollback not allowed: %w", err)
 	}
 
 	// 原子交换 upper
 	if err := atomicExchange(upperPath, backupUpper); err != nil {
 		return fmt.Errorf("atomic exchange upper: %w", err)
+	}
+
+	// 原子交换 workspace
+	if err := atomicExchange(workspacePath, backupWorkspace); err != nil {
+		// 尝试恢复 upper
+		atomicExchange(backupUpper, upperPath)
+		return fmt.Errorf("atomic exchange workspace: %w", err)
 	}
 
 	// 重建 work 目录
