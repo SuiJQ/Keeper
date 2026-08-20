@@ -775,16 +775,25 @@ func copyDirRecursive(src, dst string) error {
 		if err != nil {
 			return err
 		}
-		defer srcFile.Close()
 
 		dstFile, err := os.Create(targetPath)
 		if err != nil {
+			srcFile.Close()
 			return err
 		}
-		defer dstFile.Close()
 
-		if _, err := io.Copy(dstFile, srcFile); err != nil {
-			return err
+		_, copyErr := io.Copy(dstFile, srcFile)
+		srcFileCloseErr := srcFile.Close()
+		dstFileCloseErr := dstFile.Close()
+
+		if copyErr != nil {
+			return copyErr
+		}
+		if srcFileCloseErr != nil {
+			return srcFileCloseErr
+		}
+		if dstFileCloseErr != nil {
+			return dstFileCloseErr
 		}
 
 		return os.Chmod(targetPath, info.Mode())
