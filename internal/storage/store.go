@@ -703,6 +703,14 @@ func atomicExchange(source, target string) error {
 func recreateWorkDir(workDir string) error {
 	// 重命名隔离法
 	purgeDir := workDir + ".purge"
+
+	// 如果 purge 目录已存在，先删除
+	if _, err := os.Stat(purgeDir); err == nil {
+		if err := os.RemoveAll(purgeDir); err != nil {
+			return fmt.Errorf("remove existing purge dir: %w", err)
+		}
+	}
+
 	if err := os.Rename(workDir, purgeDir); err != nil && !os.IsNotExist(err) {
 		return err
 	}
