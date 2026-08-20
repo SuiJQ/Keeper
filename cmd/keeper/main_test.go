@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -192,6 +193,105 @@ func TestPrintUsage(t *testing.T) {
 	assert.Contains(t, output, "keeper create")
 	assert.Contains(t, output, "keeper fork")
 	assert.Contains(t, output, "keeper cp")
+}
+
+func TestRecoverAgent(t *testing.T) {
+	tmpDir, _ := setupTestConfig(t)
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	// 创建 agent
+	require.NoError(t, createAgent(cfg, []string{"test-agent"}))
+
+	// 启动一个子进程用于测试 killProcess
+	cmd := exec.Command("sleep", "10")
+	err = cmd.Start()
+	require.NoError(t, err)
+	defer cmd.Process.Kill()
+
+	// 模拟 agent 处于错误状态
+	store, _ := storage.NewStore(cfg.Home)
+	meta, _ := store.GetAgent(context.Background(), "test-agent")
+	meta.State = "fatal_bwrap_exec"
+	meta.PID = cmd.Process.Pid
+	meta.Error = "test error"
+	store.UpdateAgent(context.Background(), meta)
+
+	// 恢复 agent
+	oldStdout := os.Stdout
+	_, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err = recoverAgent(cfg, []string{"test-agent"})
+
+	w.Close()
+	os.Stdout = oldStdout
+	require.NoError(t, err)
+
+	// 验证状态已重置
+	meta, _ = store.GetAgent(context.Background(), "test-agent")
+	assert.Equal(t, "stopped", meta.State)
+	assert.Equal(t, 0, meta.PID)
+	assert.Empty(t, meta.Error)
+}
+
+func TestStopAgent(t *testing.T) {
+	tmpDir, _ := setupTestConfig(t)
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	// 创建 agent
+	require.NoError(t, createAgent(cfg, []string{"test-agent"}))
+
+	// 模拟 agent 处于 running 状态
+	store, _ := storage.NewStore(cfg.Home)
+	meta, _ := store.GetAgent(context.Background(), "test-agent")
+	meta.State = "running"
+	meta.PID = os.Getpid()
+	store.UpdateAgent(context.Background(), meta)
+
+	// 停止 agent
+	oldStdout := os.Stdout
+	_, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err = stopAgent(cfg, []string{"test-agent"})
+
+	w.Close()
+	os.Stdout = oldStdout
+	require.NoError(t, err)
+
+	// 验证状态已更新
+	meta, _ = store.GetAgent(context.Background(), "test-agent")
+	assert.Equal(t, "stopped", meta.State)
+}
+
+func TestCopyDirRecursive(t *testing.T) {
+	tmpDir, _ := setupTestConfig(t)
+	_, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	// 创建源目录结构
+	srcDir := filepath.Join(tmpDir, "src")
+	dstDir := filepath.Join(tmpDir, "dst")
+	
+	err = os.MkdirAll(filepath.Join(srcDir, "subdir"), 0755)
+	require.NoError(t, err)
+	err = os.WriteFile(filepath.Join(srcDir, "file.txt"), []byte("hello"), 0644)
+	require.NoError(t, err)
+	err = os.WriteFile(filepath.Join(srcDir, "subdir", "nested.txt"), []byte("world"), 0644)
+	require.NoError(t, err)
+
+	// 递归复制
+	err = copyDirRecursive(srcDir, dstDir)
+	require.NoError(t, err)
+
+	// 验证文件已复制
+	assert.FileExists(t, filepath.Join(dstDir, "file.txt"))
+	assert.FileExists(t, filepath.Join(dstDir, "subdir", "nested.txt"))
+	
+	content, _ := os.ReadFile(filepath.Join(dstDir, "file.txt"))
+	assert.Equal(t, []byte("hello"), content)
 }
 
 func TestStartAgentMissingName(t *testing.T) {
