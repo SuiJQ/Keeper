@@ -47,13 +47,17 @@ type AgentMeta struct {
 	Name             string            `json:"name"`
 	State            string            `json:"state"`
 	CreatedAt        string            `json:"created_at"`
+	StartedAt        string            `json:"started_at,omitempty"`
+	StoppedAt        string            `json:"stopped_at,omitempty"`
 	ShmSizeMB        int               `json:"shm_size_mb"`
 	Ports            []PortMapping     `json:"ports"`
 	MaxDownloadBytes int64             `json:"max_download_bytes"`
+	PID              int               `json:"pid,omitempty"`
 	PGID             string            `json:"pgid,omitempty"`
 	DroppedLogs      int               `json:"dropped_logs"`
 	CacheURL         string            `json:"cache_url,omitempty"`
 	CacheKey         string            `json:"cache_key,omitempty"`
+	Error            string            `json:"error,omitempty"`
 	RootfsDir        string            `json:"-"`
 	UpperDir         string            `json:"-"`
 	WorkDir          string            `json:"-"`

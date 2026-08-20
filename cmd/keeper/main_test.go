@@ -292,7 +292,7 @@ func TestStartStopStatusRecover(t *testing.T) {
 	var buf bytes.Buffer
 	buf.ReadFrom(r)
 	output := buf.String()
-	assert.Contains(t, output, "Agent 'test-agent': stopped")
+	assert.Contains(t, output, "Agent 'test-agent': running")
 
 	// 停止
 	r, w, _ = os.Pipe()

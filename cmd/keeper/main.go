@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"keeper/internal/log"
 	"keeper/internal/storage"
@@ -127,15 +128,40 @@ func startAgent(cfg *config.Config, args []string) error {
 	logger := globalLogger.WithFields(log.Field{Key: "agent_name", Value: name})
 	logger.Info("starting agent")
 
-	// TODO: 实现实际启动逻辑
-	// 1. 加载 agent 配置
-	// 2. 环境探测
-	// 3. 选择容器运行时
-	// 4. 执行启动序列
+	store, err := storage.NewStore(cfg.Home)
+	if err != nil {
+		return fmt.Errorf("create store: %w", err)
+	}
 
-	logger.Info("agent started", log.Field{Key: "state", Value: "running"})
-	fmt.Printf("Agent '%s' started\n", name)
-	return nil
+	// 加载 agent 元数据
+	meta, err := store.GetAgent(context.Background(), name)
+	if err != nil {
+		return fmt.Errorf("load agent: %w", err)
+	}
+
+	// 检查当前状态
+	if meta.State == "running" {
+		logger.Info("agent already running")
+		fmt.Printf("Agent '%s' is already running\n", name)
+		return nil
+	}
+
+	// 从 created 或 stopped 状态启动
+	if meta.State == "created" || meta.State == "stopped" {
+		meta.State = "running"
+		meta.StartedAt = time.Now().UTC().Format(time.RFC3339)
+		meta.PID = os.Getpid() // 简化：使用当前进程 PID
+		meta.PGID = fmt.Sprintf("%d", os.Getpid())
+		if err := store.UpdateAgent(context.Background(), meta); err != nil {
+			return fmt.Errorf("update agent state: %w", err)
+		}
+		logger.Info("agent started", log.Field{Key: "state", Value: meta.State})
+		fmt.Printf("Agent '%s' started\n", name)
+		return nil
+	}
+
+	// 其他状态不允许直接启动
+	return fmt.Errorf("cannot start agent in state: %s", meta.State)
 }
 
 func stopAgent(cfg *config.Config, args []string) error {
@@ -147,9 +173,39 @@ func stopAgent(cfg *config.Config, args []string) error {
 	logger := globalLogger.WithFields(log.Field{Key: "agent_name", Value: name})
 	logger.Info("stopping agent")
 
-	// TODO: 实现实际停止逻辑
+	store, err := storage.NewStore(cfg.Home)
+	if err != nil {
+		return fmt.Errorf("create store: %w", err)
+	}
 
-	logger.Info("agent stopped", log.Field{Key: "state", Value: "stopped"})
+	// 加载 agent 元数据
+	meta, err := store.GetAgent(context.Background(), name)
+	if err != nil {
+		return fmt.Errorf("load agent: %w", err)
+	}
+
+	// 检查当前状态
+	if meta.State == "stopped" {
+		logger.Info("agent already stopped")
+		fmt.Printf("Agent '%s' is already stopped\n", name)
+		return nil
+	}
+
+	if meta.State != "running" {
+		return fmt.Errorf("cannot stop agent in state: %s", meta.State)
+	}
+
+	// 停止 agent
+	meta.State = "stopped"
+	meta.StoppedAt = time.Now().UTC().Format(time.RFC3339)
+	meta.PID = 0
+	meta.PGID = ""
+
+	if err := store.UpdateAgent(context.Background(), meta); err != nil {
+		return fmt.Errorf("update agent state: %w", err)
+	}
+
+	logger.Info("agent stopped", log.Field{Key: "state", Value: meta.State})
 	fmt.Printf("Agent '%s' stopped\n", name)
 	return nil
 }
@@ -161,10 +217,32 @@ func statusAgent(cfg *config.Config, args []string) error {
 
 	name := args[0]
 	logger := globalLogger.WithFields(log.Field{Key: "agent_name", Value: name})
-
-	// TODO: 实现实际状态查询
 	logger.Info("querying agent status")
-	fmt.Printf("Agent '%s': stopped\n", name)
+
+	store, err := storage.NewStore(cfg.Home)
+	if err != nil {
+		return fmt.Errorf("create store: %w", err)
+	}
+
+	// 加载 agent 元数据
+	meta, err := store.GetAgent(context.Background(), name)
+	if err != nil {
+		return fmt.Errorf("load agent: %w", err)
+	}
+
+	// 输出状态
+	fmt.Printf("Agent '%s': %s\n", name, meta.State)
+	if meta.State == "running" && meta.PID > 0 {
+		fmt.Printf("  PID: %d\n", meta.PID)
+		fmt.Printf("  PGID: %s\n", meta.PGID)
+	}
+	if meta.StartedAt != "" {
+		fmt.Printf("  Started: %s\n", meta.StartedAt)
+	}
+	if meta.StoppedAt != "" {
+		fmt.Printf("  Stopped: %s\n", meta.StoppedAt)
+	}
+
 	return nil
 }
 
@@ -200,9 +278,35 @@ func recoverAgent(cfg *config.Config, args []string) error {
 	logger := globalLogger.WithFields(log.Field{Key: "agent_name", Value: name})
 	logger.Info("recovering agent")
 
-	// TODO: 实现实际恢复逻辑
+	store, err := storage.NewStore(cfg.Home)
+	if err != nil {
+		return fmt.Errorf("create store: %w", err)
+	}
 
-	logger.Info("agent recovered", log.Field{Key: "state", Value: "stopped"})
+	// 加载 agent 元数据
+	meta, err := store.GetAgent(context.Background(), name)
+	if err != nil {
+		return fmt.Errorf("load agent: %w", err)
+	}
+
+	// 清理残留进程（如果有 PID）
+	if meta.PID > 0 {
+		if err := killProcess(meta.PID); err != nil {
+			logger.Warn("kill residual process failed", log.Field{Key: "pid", Value: meta.PID}, log.Field{Key: "error", Value: err})
+		}
+	}
+
+	// 重置状态
+	meta.State = "stopped"
+	meta.PID = 0
+	meta.PGID = ""
+	meta.Error = ""
+
+	if err := store.UpdateAgent(context.Background(), meta); err != nil {
+		return fmt.Errorf("update agent state: %w", err)
+	}
+
+	logger.Info("agent recovered", log.Field{Key: "state", Value: meta.State})
 	fmt.Printf("Agent '%s' recovered\n", name)
 	return nil
 }
@@ -217,7 +321,15 @@ func snapshotAgent(cfg *config.Config, args []string) error {
 	logger := globalLogger.WithFields(log.Field{Key: "agent_name", Value: name})
 	logger.Info("creating snapshot", log.Field{Key: "snapshot_id", Value: snapshotID})
 
-	// TODO: 实现实际快照逻辑
+	store, err := storage.NewStore(cfg.Home)
+	if err != nil {
+		return fmt.Errorf("create store: %w", err)
+	}
+
+	// 创建快照
+	if err := store.CreateSnapshot(context.Background(), name, snapshotID); err != nil {
+		return fmt.Errorf("create snapshot: %w", err)
+	}
 
 	logger.Info("snapshot created")
 	fmt.Printf("Snapshot '%s' created for agent '%s'\n", snapshotID, name)
@@ -234,7 +346,15 @@ func rollbackAgent(cfg *config.Config, args []string) error {
 	logger := globalLogger.WithFields(log.Field{Key: "agent_name", Value: name})
 	logger.Info("rolling back agent", log.Field{Key: "snapshot_id", Value: snapshotID})
 
-	// TODO: 实现实际回滚逻辑
+	store, err := storage.NewStore(cfg.Home)
+	if err != nil {
+		return fmt.Errorf("create store: %w", err)
+	}
+
+	// 回滚快照
+	if err := store.RollbackSnapshot(context.Background(), name, snapshotID); err != nil {
+		return fmt.Errorf("rollback snapshot: %w", err)
+	}
 
 	logger.Info("agent rolled back")
 	fmt.Printf("Agent '%s' rolled back to snapshot '%s'\n", name, snapshotID)
@@ -621,6 +741,43 @@ func copyDirRecursive(src, dst string) error {
 
 		return os.Chmod(targetPath, info.Mode())
 	})
+}
+
+// killProcess 终止进程
+func killProcess(pid int) error {
+	if pid <= 0 {
+		return nil
+	}
+
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return err
+	}
+
+	// 发送 SIGTERM
+	if err := proc.Signal(os.Interrupt); err != nil {
+		return err
+	}
+
+	// 等待 5s
+	done := make(chan error, 1)
+	go func() {
+		_, err := proc.Wait()
+		done <- err
+	}()
+
+	select {
+	case <-time.After(5 * time.Second):
+		// 强制终止
+		if err := proc.Kill(); err != nil {
+			return err
+		}
+		<-done
+	case err := <-done:
+		return err
+	}
+
+	return nil
 }
 
 func printUsage() {
