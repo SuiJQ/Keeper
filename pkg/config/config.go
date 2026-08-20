@@ -157,7 +157,8 @@ func (c *Config) ReloadIfChanged() error {
 		return fmt.Errorf("stat config file: %w", err)
 	}
 
-	if info.ModTime().Equal(modTime) {
+	// 检查 modTime 是否变化（支持时钟回拨和精度问题）
+	if !info.ModTime().After(modTime) {
 		return nil // 未变更
 	}
 
@@ -165,7 +166,7 @@ func (c *Config) ReloadIfChanged() error {
 	defer c.mu.Unlock()
 
 	// 二次检查，避免并发重载
-	if info.ModTime().Equal(c.modTime) {
+	if info.ModTime().Equal(c.modTime) || info.ModTime().Before(c.modTime) {
 		return nil
 	}
 
