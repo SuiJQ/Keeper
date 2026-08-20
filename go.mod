@@ -1,6 +1,6 @@
 module keeper
 
-go 1.21.13
+go 1.21
 
 require github.com/stretchr/testify v1.12.1
 
