@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 // Config Keeper 全局配置
@@ -37,6 +38,18 @@ type Config struct {
 	// DownloadTimeout 下载超时时间
 	DownloadTimeout string `json:"download_timeout"`
 
+	// WatchdogTimeout 看门狗超时时间
+	WatchdogTimeout string `json:"watchdog_timeout"`
+
+	// WatchdogCheckInterval 看门狗检查间隔
+	WatchdogCheckInterval string `json:"watchdog_check_interval"`
+
+	// MCPAllowedUIDs MCP Server 允许的 UID 列表
+	MCPAllowedUIDs []uint32 `json:"mcp_allowed_uids"`
+
+	// MCPAllowedGIDs MCP Server 允许的 GID 列表
+	MCPAllowedGIDs []uint32 `json:"mcp_allowed_gids"`
+
 	// file 配置文件路径（不序列化）
 	file string
 }
@@ -49,6 +62,10 @@ func DefaultConfig() *Config {
 		DisableCrossDeviceCheck: false,
 		DefaultShmSizeMB:        64,
 		DownloadTimeout:         "5m",
+		WatchdogTimeout:         "60s",
+		WatchdogCheckInterval:   "5s",
+		MCPAllowedUIDs:          []uint32{},
+		MCPAllowedGIDs:          []uint32{},
 	}
 }
 
@@ -146,4 +163,19 @@ func (c *Config) Validate() error {
 	}
 
 	return nil
+}
+
+// WatchdogTimeoutDuration 返回看门狗超时时间
+func (c *Config) WatchdogTimeoutDuration() (time.Duration, error) {
+	return time.ParseDuration(c.WatchdogTimeout)
+}
+
+// WatchdogCheckIntervalDuration 返回看门狗检查间隔
+func (c *Config) WatchdogCheckIntervalDuration() (time.Duration, error) {
+	return time.ParseDuration(c.WatchdogCheckInterval)
+}
+
+// DownloadTimeoutDuration 返回下载超时时间
+func (c *Config) DownloadTimeoutDuration() (time.Duration, error) {
+	return time.ParseDuration(c.DownloadTimeout)
 }
