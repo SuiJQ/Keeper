@@ -323,3 +323,11 @@ func TestMapMCPToKeeper(t *testing.T) {
 		}
 	}
 }
+
+func TestFindKeeperBinary(t *testing.T) {
+	// findKeeperBinary 应该能找到 keeper 二进制文件或返回错误
+	_, err := findKeeperBinary()
+	// 在当前测试环境中，keeper 可能不在 PATH 中
+	// 所以要么找到，要么返回错误，都不应该 panic
+	assert.NotNil(t, err) // 预期在当前环境找不到
+}

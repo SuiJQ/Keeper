@@ -8,14 +8,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
-	"keeper/internal/log"
+	"keeper/internal/bootstrap"
 	"keeper/internal/errors"
+	"keeper/internal/log"
 )
 
 // BwrapContainer bwrap 容器运行时实现
@@ -239,25 +239,11 @@ func (c *BwrapContainer) checkDependencies() error {
 
 // checkKernelSupport 检查内核支持
 func (c *BwrapContainer) checkKernelSupport() bool {
-	// 读取内核配置
-	// /boot/config-$(uname -r) 或 /proc/config.gz
-	_, err := os.ReadFile("/proc/config.gz")
-	if err == nil {
-		// 处理 gzip 压缩的配置
-		// 简化实现：直接返回 false，实际应该解析
-		return false
-	}
-
-	// 尝试读取未压缩配置
-	configPath := "/boot/config-" + runtime.GOARCH
-	if _, err := os.Stat(configPath); err == nil {
-		// 读取并解析
-		// 简化实现：返回 false
-		return false
-	}
-
-	// 默认认为不支持（生产环境需要实际检测）
-	return false
+	// 使用 bootstrap 包的环境探测功能
+	// 注意：这里导入 bootstrap 包是为了复用探测逻辑
+	// 实际部署时应该缓存探测结果，避免重复检测
+	result := bootstrap.ProbeEnvironment()
+	return result.OverlayUserNS && result.BwrapAvailable
 }
 
 // buildArgs 构建 bwrap 参数
