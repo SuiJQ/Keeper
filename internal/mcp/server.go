@@ -17,20 +17,24 @@ import (
 
 // Server MCP Server 实现
 type Server struct {
-	mu         sync.Mutex
-	running    bool
-	listener   net.Listener
-	socketPath string
-	store      storage.Store
-	logger     log.Logger
-	agentName  string
+	mu          sync.Mutex
+	running     bool
+	listener    net.Listener
+	socketPath  string
+	store       storage.Store
+	logger      log.Logger
+	agentName   string
+	allowedUIDs map[uint32]struct{}
+	allowedGIDs map[uint32]struct{}
 }
 
 // ServerConfig MCP Server 配置
 type ServerConfig struct {
-	SocketPath string
-	Store      storage.Store
-	AgentName  string
+	SocketPath  string
+	Store       storage.Store
+	AgentName   string
+	AllowedUIDs []uint32
+	AllowedGIDs []uint32
 }
 
 // NewServer 创建 MCP Server 实例
@@ -62,11 +66,22 @@ func NewServer(cfg ServerConfig, logger log.Logger) (*Server, error) {
 		return nil, fmt.Errorf("create store: %w", err)
 	}
 
+	allowedUIDs := make(map[uint32]struct{}, len(cfg.AllowedUIDs))
+	for _, uid := range cfg.AllowedUIDs {
+		allowedUIDs[uid] = struct{}{}
+	}
+	allowedGIDs := make(map[uint32]struct{}, len(cfg.AllowedGIDs))
+	for _, gid := range cfg.AllowedGIDs {
+		allowedGIDs[gid] = struct{}{}
+	}
+
 	return &Server{
-		socketPath: cfg.SocketPath,
-		store:      store,
-		logger:     logger,
-		agentName:  cfg.AgentName,
+		socketPath:  cfg.SocketPath,
+		store:       store,
+		logger:      logger,
+		agentName:   cfg.AgentName,
+		allowedUIDs: allowedUIDs,
+		allowedGIDs: allowedGIDs,
 	}, nil
 }
 
@@ -164,10 +179,9 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 		log.Field{Key: "uid", Value: cred.Uid},
 		log.Field{Key: "gid", Value: cred.Gid})
 
-	// TODO: 可配置允许的 UID 列表
-	// 当前允许所有非系统用户（UID >= 1000）
-	if cred.Uid < 1000 {
-		s.logger.Warn("rejecting connection from system user", log.Field{Key: "uid", Value: cred.Uid})
+	// 可配置的 UID/GID 白名单校验
+	if err := s.authorize(cred); err != nil {
+		s.logger.Warn("rejecting connection", log.Field{Key: "uid", Value: cred.Uid}, log.Field{Key: "gid", Value: cred.Gid}, log.Field{Key: "error", Value: err.Error()})
 		return
 	}
 
@@ -217,6 +231,23 @@ func getPeerCredentials(conn net.Conn) (*syscall.Ucred, error) {
 	}
 
 	return cred, nil
+}
+
+// authorize 校验客户端 UID/GID 白名单
+func (s *Server) authorize(cred *syscall.Ucred) error {
+	if len(s.allowedUIDs) > 0 {
+		if _, ok := s.allowedUIDs[cred.Uid]; !ok {
+			return fmt.Errorf("uid %d not allowed", cred.Uid)
+		}
+	}
+
+	if len(s.allowedGIDs) > 0 {
+		if _, ok := s.allowedGIDs[cred.Gid]; !ok {
+			return fmt.Errorf("gid %d not allowed", cred.Gid)
+		}
+	}
+
+	return nil
 }
 
 // handleRequest 处理单个请求
@@ -395,7 +426,6 @@ func (s *Server) handleToolCall(ctx context.Context, req Request) Response {
 		arguments = make(map[string]interface{})
 	}
 
-	// TODO: 实际调用对应的 keeper 命令
 	result, err := s.executeTool(ctx, toolName, arguments)
 	if err != nil {
 		return Response{
