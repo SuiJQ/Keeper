@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"compress/gzip"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -172,14 +173,30 @@ func checkCommand(name string) bool {
 }
 
 func checkSeccomp() bool {
-	// 简化实现：检查是否存在 seccomp 相关文件或系统调用
-	// 实际应该运行测试程序验证
-	return true
+	// 检查 /proc/self/status 中的 Seccomp 字段
+	data, err := os.ReadFile("/proc/self/status")
+	if err != nil {
+		return false
+	}
+
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "Seccomp:") {
+			parts := strings.Fields(line)
+			if len(parts) >= 2 {
+				return parts[1] != "0"
+			}
+		}
+	}
+	return false
 }
 
 // ProbeReport 生成详细的探测报告（JSON 格式）
 func (r *ProbeResult) ProbeReport() string {
-	// 简化实现：返回 String() 的结果
-	// 实际应该返回 JSON 格式
-	return r.String()
+	data, err := json.MarshalIndent(r, "", "  ")
+	if err != nil {
+		return r.String()
+	}
+	return string(data)
 }
