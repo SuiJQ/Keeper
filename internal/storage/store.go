@@ -20,7 +20,7 @@ import (
 // Store 定义 Agent 存储操作接口
 type Store interface {
 	// CreateAgent 创建新 Agent 目录结构
-	CreateAgent(ctx context.Context, name string) (*AgentMeta, error)
+	CreateAgent(ctx context.Context, name string, defaultShmSizeMB int, defaultMaxDownloadBytes int64) (*AgentMeta, error)
 
 	// GetAgent 获取 Agent 元数据
 	GetAgent(ctx context.Context, name string) (*AgentMeta, error)
@@ -125,7 +125,7 @@ func (s *fileStore) agentDir(name string) string {
 }
 
 // CreateAgent 创建 Agent 目录结构
-func (s *fileStore) CreateAgent(ctx context.Context, name string) (*AgentMeta, error) {
+func (s *fileStore) CreateAgent(ctx context.Context, name string, defaultShmSizeMB int, defaultMaxDownloadBytes int64) (*AgentMeta, error) {
 	agentPath := s.agentDir(name)
 
 	// 检查是否已存在
@@ -151,12 +151,21 @@ func (s *fileStore) CreateAgent(ctx context.Context, name string) (*AgentMeta, e
 		}
 	}
 
+	shmSize := defaultShmSizeMB
+	if shmSize <= 0 {
+		shmSize = 64
+	}
+	maxDownload := defaultMaxDownloadBytes
+	if maxDownload <= 0 {
+		maxDownload = 1024 * 1024 * 1024
+	}
+
 	meta := &AgentMeta{
 		Name:             name,
 		State:            "created",
 		CreatedAt:        time.Now().UTC().Format(time.RFC3339),
-		ShmSizeMB:        64,
-		MaxDownloadBytes: 1024 * 1024 * 1024,
+		ShmSizeMB:        shmSize,
+		MaxDownloadBytes: maxDownload,
 		RootfsDir:        filepath.Join(agentPath, "rootfs"),
 		UpperDir:         filepath.Join(agentPath, "upper"),
 		WorkDir:          filepath.Join(agentPath, "work"),

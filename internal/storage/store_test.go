@@ -16,7 +16,7 @@ func TestCreateAgent(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	meta, err := store.CreateAgent(ctx, "test-agent")
+	meta, err := store.CreateAgent(ctx, "test-agent", 64, 1024*1024*1024)
 	require.NoError(t, err)
 	assert.Equal(t, "test-agent", meta.Name)
 	assert.Equal(t, "created", meta.State)
@@ -33,11 +33,11 @@ func TestCreateAgentDuplicate(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	_, err = store.CreateAgent(ctx, "test-agent")
+	_, err = store.CreateAgent(ctx, "test-agent", 64, 1024*1024*1024)
 	require.NoError(t, err)
 
 	// 重复创建应失败
-	_, err = store.CreateAgent(ctx, "test-agent")
+	_, err = store.CreateAgent(ctx, "test-agent", 64, 1024*1024*1024)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "already exists")
 }
@@ -48,7 +48,7 @@ func TestGetAgent(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	created, err := store.CreateAgent(ctx, "test-agent")
+	created, err := store.CreateAgent(ctx, "test-agent", 64, 1024*1024*1024)
 	require.NoError(t, err)
 
 	got, err := store.GetAgent(ctx, "test-agent")
@@ -74,9 +74,9 @@ func TestListAgents(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	_, err = store.CreateAgent(ctx, "agent-a")
+	_, err = store.CreateAgent(ctx, "agent-a", 64, 1024*1024*1024)
 	require.NoError(t, err)
-	_, err = store.CreateAgent(ctx, "agent-b")
+	_, err = store.CreateAgent(ctx, "agent-b", 64, 1024*1024*1024)
 	require.NoError(t, err)
 
 	agents, err := store.ListAgents(ctx)
@@ -90,7 +90,7 @@ func TestDeleteAgent(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	_, err = store.CreateAgent(ctx, "test-agent")
+	_, err = store.CreateAgent(ctx, "test-agent", 64, 1024*1024*1024)
 	require.NoError(t, err)
 
 	err = store.DeleteAgent(ctx, "test-agent")
@@ -107,7 +107,7 @@ func TestForkAgent(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	_, err = store.CreateAgent(ctx, "source")
+	_, err = store.CreateAgent(ctx, "source", 64, 1024*1024*1024)
 	require.NoError(t, err)
 
 	// 写入一些文件到 upper 目录
@@ -154,7 +154,7 @@ func TestForkAgentInvalidState(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	meta, err := store.CreateAgent(ctx, "source")
+	meta, err := store.CreateAgent(ctx, "source", 64, 1024*1024*1024)
 	require.NoError(t, err)
 
 	// 模拟 running 状态
@@ -174,9 +174,9 @@ func TestForkAgentTargetExists(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	_, err = store.CreateAgent(ctx, "source")
+	_, err = store.CreateAgent(ctx, "source", 64, 1024*1024*1024)
 	require.NoError(t, err)
-	_, err = store.CreateAgent(ctx, "target")
+	_, err = store.CreateAgent(ctx, "target", 64, 1024*1024*1024)
 	require.NoError(t, err)
 
 	_, err = store.ForkAgent(ctx, "source", "target")
@@ -190,7 +190,7 @@ func TestCreateSnapshot(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	_, err = store.CreateAgent(ctx, "test-agent")
+	_, err = store.CreateAgent(ctx, "test-agent", 64, 1024*1024*1024)
 	require.NoError(t, err)
 
 	// 写入一些文件
@@ -213,7 +213,7 @@ func TestRollbackSnapshot(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	_, err = store.CreateAgent(ctx, "test-agent")
+	_, err = store.CreateAgent(ctx, "test-agent", 64, 1024*1024*1024)
 	require.NoError(t, err)
 
 	// 写入初始文件
@@ -245,9 +245,9 @@ func TestPruneCache(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	_, err = store.CreateAgent(ctx, "agent-a")
+	_, err = store.CreateAgent(ctx, "agent-a", 64, 1024*1024*1024)
 	require.NoError(t, err)
-	_, err = store.CreateAgent(ctx, "agent-b")
+	_, err = store.CreateAgent(ctx, "agent-b", 64, 1024*1024*1024)
 	require.NoError(t, err)
 
 	// 创建缓存目录
@@ -273,7 +273,7 @@ func TestAgentMetaPaths(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	meta, err := store.CreateAgent(ctx, "test-agent")
+	meta, err := store.CreateAgent(ctx, "test-agent", 64, 1024*1024*1024)
 	require.NoError(t, err)
 
 	// 验证路径是否正确填充

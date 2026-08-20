@@ -247,8 +247,37 @@ func getPeerCredentials(conn net.Conn) (*syscall.Ucred, error) {
 	return cred, nil
 }
 
+// UpdateAllowedUIDs 更新允许的 UID 白名单
+func (s *Server) UpdateAllowedUIDs(uids []uint32) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.allowedUIDs = make(map[uint32]struct{}, len(uids))
+	for _, uid := range uids {
+		s.allowedUIDs[uid] = struct{}{}
+	}
+
+	s.logger.Info("MCP allowed UIDs updated", log.Field{Key: "uids", Value: uids})
+}
+
+// UpdateAllowedGIDs 更新允许的 GID 白名单
+func (s *Server) UpdateAllowedGIDs(gids []uint32) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.allowedGIDs = make(map[uint32]struct{}, len(gids))
+	for _, gid := range gids {
+		s.allowedGIDs[gid] = struct{}{}
+	}
+
+	s.logger.Info("MCP allowed GIDs updated", log.Field{Key: "gids", Value: gids})
+}
+
 // authorize 校验客户端 UID/GID 白名单
 func (s *Server) authorize(cred *syscall.Ucred) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if len(s.allowedUIDs) > 0 {
 		if _, ok := s.allowedUIDs[cred.Uid]; !ok {
 			return fmt.Errorf("uid %d not allowed", cred.Uid)

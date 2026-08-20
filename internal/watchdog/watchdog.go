@@ -323,6 +323,24 @@ func (w *Watchdog) RecoverDState(agentName string) error {
 	)
 }
 
+// UpdateTimeout 动态更新看门狗超时时间
+func (w *Watchdog) UpdateTimeout(timeout time.Duration) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	w.timeout = timeout
+	w.logger.Info("watchdog timeout updated", log.Field{Key: "timeout", Value: timeout})
+}
+
+// UpdateCheckInterval 动态更新看门狗检查间隔
+func (w *Watchdog) UpdateCheckInterval(interval time.Duration) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	w.checkInterval = interval
+	w.logger.Info("watchdog check interval updated", log.Field{Key: "interval", Value: interval})
+}
+
 // signalProcess 向进程发送信号
 func (a *AgentInfo) signalProcess(sig os.Signal) error {
 	if a.PID <= 0 {

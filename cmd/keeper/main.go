@@ -114,7 +114,11 @@ func createAgent(cfg *config.Config, args []string) error {
 		return fmt.Errorf("create store: %w", err)
 	}
 
-	meta, err := store.CreateAgent(context.Background(), name)
+	// 从配置读取默认值
+	shmSizeMB := cfg.DefaultShmSizeMB
+	maxDownloadBytes := cfg.MaxDownloadBytes
+
+	meta, err := store.CreateAgent(context.Background(), name, shmSizeMB, maxDownloadBytes)
 	if err != nil {
 		return fmt.Errorf("create agent: %w", err)
 	}
@@ -349,6 +353,27 @@ func runAgentCommand(cfg *config.Config, args []string) error {
 		CheckInterval: watchdogInterval,
 	}, logger)
 
+	// 注册配置热加载回调
+	cfg.OnReload(func(newCfg *config.Config) {
+		// 更新 MCP Server 授权配置
+		mcpServer.UpdateAllowedUIDs(newCfg.MCPAllowedUIDs)
+		mcpServer.UpdateAllowedGIDs(newCfg.MCPAllowedGIDs)
+
+		// 更新看门狗超时配置
+		newTimeout, err := newCfg.WatchdogTimeoutDuration()
+		if err == nil {
+			wd.UpdateTimeout(newTimeout)
+		}
+		newInterval, err := newCfg.WatchdogCheckIntervalDuration()
+		if err == nil {
+			wd.UpdateCheckInterval(newInterval)
+		}
+
+		logger.Info("configuration reloaded",
+			log.Field{Key: "shm_size_mb", Value: newCfg.DefaultShmSizeMB},
+			log.Field{Key: "watchdog_timeout", Value: newCfg.WatchdogTimeout})
+	})
+
 	// 注册 Agent 到看门狗
 	wd.RegisterAgent(name, meta.PID)
 
@@ -371,10 +396,32 @@ func runAgentCommand(cfg *config.Config, args []string) error {
 	// 等待信号
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+	// 启动配置热加载 goroutine
+	reloadDone := make(chan struct{})
+	go func() {
+		defer close(reloadDone)
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				if err := cfg.ReloadIfChanged(); err != nil {
+					logger.Warn("config reload failed", log.Field{Key: "error", Value: err.Error()})
+				}
+			case <-sigCh:
+				return
+			}
+		}
+	}()
+
 	<-sigCh
 
 	logger.Info("received stop signal, shutting down")
 	fmt.Println("\nShutting down...")
+
+	// 等待热加载 goroutine 结束
+	<-reloadDone
 
 	// 停止看门狗
 	wd.Stop()

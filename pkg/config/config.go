@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 )
 
@@ -52,6 +53,15 @@ type Config struct {
 
 	// file 配置文件路径（不序列化）
 	file string
+
+	// modTime 配置文件最后修改时间（用于热加载）
+	modTime time.Time
+
+	// mu 配置读写锁
+	mu sync.RWMutex
+
+	// onReload 热加载回调
+	onReload []func(*Config)
 }
 
 // DefaultConfig 返回默认配置
@@ -90,6 +100,11 @@ func Load(home string) (*Config, error) {
 			return nil, fmt.Errorf("parse config file: %w", err)
 		}
 		cfg.file = configFile
+
+		// 记录文件修改时间
+		if info, err := os.Stat(configFile); err == nil {
+			cfg.modTime = info.ModTime()
+		}
 	}
 
 	// 确保目录存在
@@ -102,6 +117,9 @@ func Load(home string) (*Config, error) {
 
 // Save 保存配置到文件
 func (c *Config) Save() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	if c.file == "" {
 		c.file = filepath.Join(c.Home, "config.json")
 	}
@@ -115,7 +133,83 @@ func (c *Config) Save() error {
 		return fmt.Errorf("write config file: %w", err)
 	}
 
+	// 更新修改时间
+	if info, err := os.Stat(c.file); err == nil {
+		c.modTime = info.ModTime()
+	}
+
 	return nil
+}
+
+// ReloadIfChanged 检查配置文件是否变更，如有变更则重载
+func (c *Config) ReloadIfChanged() error {
+	c.mu.RLock()
+	file := c.file
+	modTime := c.modTime
+	c.mu.RUnlock()
+
+	if file == "" {
+		return nil
+	}
+
+	info, err := os.Stat(file)
+	if err != nil {
+		return fmt.Errorf("stat config file: %w", err)
+	}
+
+	if info.ModTime().Equal(modTime) {
+		return nil // 未变更
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// 二次检查，避免并发重载
+	if info.ModTime().Equal(c.modTime) {
+		return nil
+	}
+
+	data, err := os.ReadFile(file)
+	if err != nil {
+		return fmt.Errorf("read config file: %w", err)
+	}
+
+	newCfg := DefaultConfig()
+	newCfg.Home = c.Home
+	newCfg.BinDir = c.BinDir
+	newCfg.CacheDir = c.CacheDir
+	newCfg.AgentsDir = c.AgentsDir
+	newCfg.file = c.file
+
+	if err := json.Unmarshal(data, newCfg); err != nil {
+		return fmt.Errorf("parse config file: %w", err)
+	}
+
+	// 保留内部字段
+	c.LogLevel = newCfg.LogLevel
+	c.MaxDownloadBytes = newCfg.MaxDownloadBytes
+	c.DisableCrossDeviceCheck = newCfg.DisableCrossDeviceCheck
+	c.DefaultShmSizeMB = newCfg.DefaultShmSizeMB
+	c.DownloadTimeout = newCfg.DownloadTimeout
+	c.WatchdogTimeout = newCfg.WatchdogTimeout
+	c.WatchdogCheckInterval = newCfg.WatchdogCheckInterval
+	c.MCPAllowedUIDs = newCfg.MCPAllowedUIDs
+	c.MCPAllowedGIDs = newCfg.MCPAllowedGIDs
+	c.modTime = info.ModTime()
+
+	// 触发回调
+	for _, fn := range c.onReload {
+		fn(c)
+	}
+
+	return nil
+}
+
+// OnReload 注册配置变更回调
+func (c *Config) OnReload(fn func(*Config)) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.onReload = append(c.onReload, fn)
 }
 
 // ensureDirs 确保必要目录存在
