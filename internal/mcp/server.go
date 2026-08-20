@@ -10,7 +10,9 @@ import (
 	"path/filepath"
 	"sync"
 	"syscall"
+	"time"
 
+	"keeper/internal/errors"
 	"keeper/internal/log"
 	"keeper/internal/storage"
 )
@@ -489,8 +491,21 @@ func (s *Server) executeTool(ctx context.Context, name string, args map[string]i
 
 	cmd := exec.CommandContext(ctx, keeperBin, cmdArgs...)
 
+	// 如果 context 没有超时，设置默认超时（30 秒）
+	if _, hasTimeout := ctx.Deadline(); !hasTimeout {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		cmd = exec.CommandContext(ctx, keeperBin, cmdArgs...)
+	}
+
 	output, err := cmd.CombinedOutput()
 	if err != nil {
+		// 区分超时错误和其他错误
+		if ctx.Err() == context.DeadlineExceeded {
+			return "", errors.NewKeeperError(errors.ErrCodeProcess,
+				fmt.Sprintf("keeper %s timed out after 30s", keeperCmd), err)
+		}
 		return "", fmt.Errorf("keeper %s failed: %w\n%s", keeperCmd, err, string(output))
 	}
 

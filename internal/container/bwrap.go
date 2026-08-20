@@ -152,12 +152,18 @@ func (c *BwrapContainer) Stop(ctx context.Context, grace time.Duration) error {
 // Exec 在容器内执行命令
 func (c *BwrapContainer) Exec(ctx context.Context, req ExecRequest) (*ExecResponse, error) {
 	if c.cmd == nil || c.cmd.Process == nil {
-		return nil, fmt.Errorf("container not running")
+		return nil, errors.NewKeeperError(errors.ErrCodeContainer, "container not running", nil)
 	}
 
 	c.logger.Info("executing command in container",
 		log.Field{Key: "command", Value: req.Command},
-		log.Field{Key: "pid", Value: c.cmd.Process.Pid})
+		log.Field{Key: "pid", Value: c.cmd.Process.Pid},
+		log.Field{Key: "timeout", Value: req.Timeout})
+
+	// 检查 nsenter 是否可用
+	if _, err := exec.LookPath("nsenter"); err != nil {
+		return nil, errors.NewKeeperError(errors.ErrCodeProcess, "nsenter not found, cannot exec into container", err)
+	}
 
 	// 使用 nsenter 进入容器命名空间执行命令
 	args := []string{
@@ -215,30 +221,53 @@ func (c *BwrapContainer) Exec(ctx context.Context, req ExecRequest) (*ExecRespon
 		log.Field{Key: "stdout_len", Value: stdout.Len()},
 		log.Field{Key: "stderr_len", Value: stderr.Len()})
 
-	return &ExecResponse{
+	// 构建响应
+	resp := &ExecResponse{
 		ExitCode: exitCode,
 		Stdout:   stdout.Bytes(),
 		Stderr:   stderr.Bytes(),
-	}, nil
+	}
+
+	// 如果有错误，附加到响应中
+	if err != nil {
+		resp.Error = err.Error()
+	}
+
+	return resp, nil
 }
 
 // Status 查询容器状态
 func (c *BwrapContainer) Status(ctx context.Context) (*ContainerStatus, error) {
-	if c.cmd != nil && c.cmd.Process != nil {
-		// 检查进程是否还在运行
-		err := c.cmd.Process.Signal(syscall.Signal(0))
-		if err != nil {
-			c.status.State = "stopped"
-			c.status.PID = 0
-			c.status.PGID = 0
-		} else {
-			c.status.State = "running"
-			// 读取 /proc/<pid>/status 获取详细信息
-			if status, err := readProcessStatus(c.cmd.Process.Pid); err == nil {
-				c.status.Uptime = status.Uptime
-			}
-		}
+	if c.cmd == nil || c.cmd.Process == nil {
+		// 未启动的容器返回当前状态（可能是 created 或 destroyed）
+		return &c.status, nil
 	}
+
+	// 检查进程是否还在运行
+	err := c.cmd.Process.Signal(syscall.Signal(0))
+	if err != nil {
+		c.status.State = "stopped"
+		c.status.PID = 0
+		c.status.PGID = 0
+		c.logger.Warn("container process not found", log.Field{Key: "pid", Value: c.cmd.Process.Pid})
+		return &c.status, nil
+	}
+
+	c.status.State = "running"
+	c.status.PID = c.cmd.Process.Pid
+	c.status.PGID = c.cmd.Process.Pid
+
+	// 读取 /proc/<pid>/status 获取详细信息
+	if status, err := readProcessStatus(c.cmd.Process.Pid); err == nil {
+		c.status.Uptime = status.Uptime
+	} else {
+		c.logger.Debug("failed to read process status", log.Field{Key: "pid", Value: c.cmd.Process.Pid}, log.Field{Key: "error", Value: err.Error()})
+	}
+
+	c.logger.Debug("container status checked",
+		log.Field{Key: "state", Value: c.status.State},
+		log.Field{Key: "pid", Value: c.status.PID},
+		log.Field{Key: "uptime", Value: c.status.Uptime})
 
 	return &c.status, nil
 }

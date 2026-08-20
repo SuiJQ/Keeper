@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"syscall"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 // Store 定义 Agent 存储操作接口
@@ -596,19 +598,45 @@ func checkSameDevice(paths ...string) error {
 }
 
 func atomicExchange(source, target string) error {
-	// 简化实现：使用临时文件进行交换
-	// 注意：这不是原子操作，仅在测试环境使用
+	// 使用 renameat2 实现真正的原子交换（Linux 3.15+）
+	// 如果内核不支持，fallback 到非原子实现
+	sourceDir := filepath.Dir(source)
+	targetDir := filepath.Dir(target)
+
+	sourceFD, err := os.Open(sourceDir)
+	if err != nil {
+		return fmt.Errorf("open source dir: %w", err)
+	}
+	defer sourceFD.Close()
+
+	targetFD, err := os.Open(targetDir)
+	if err != nil {
+		return fmt.Errorf("open target dir: %w", err)
+	}
+	defer targetFD.Close()
+
+	// 尝试使用 renameat2 进行原子交换
+	// RENAME_EXCHANGE: 原子交换两个文件
+	// RENAME_NOREPLACE: 不覆盖已存在的文件（作为 fallback）
+	err = unix.Renameat2(int(sourceFD.Fd()), filepath.Base(source),
+		int(targetFD.Fd()), filepath.Base(target), unix.RENAME_EXCHANGE)
+	if err == nil {
+		return nil
+	}
+
+	// Fallback：如果 renameat2 不可用或失败，使用非原子实现
+	// 注意：这仅在测试环境或旧内核上使用
 	tmpFile := target + ".tmp"
 	if err := os.Rename(target, tmpFile); err != nil && !os.IsNotExist(err) {
-		return err
+		return fmt.Errorf("rename target to tmp: %w", err)
 	}
 	if err := os.Rename(source, target); err != nil {
 		os.Rename(tmpFile, target)
-		return err
+		return fmt.Errorf("rename source to target: %w", err)
 	}
 	if tmpFile != target {
 		if err := os.Rename(tmpFile, source); err != nil {
-			return err
+			return fmt.Errorf("rename tmp to source: %w", err)
 		}
 	}
 	return nil

@@ -145,6 +145,22 @@ func ioCopy(dst, src net.Conn) {
 	}
 }
 
+// copyBuffer 使用 io.CopyBuffer 进行高效复制
+func copyBuffer(dst net.Conn, src net.Conn) error {
+	buf := make([]byte, 32*1024)
+	for {
+		src.SetReadDeadline(time.Now().Add(30 * time.Second))
+		n, err := src.Read(buf)
+		if err != nil {
+			return err
+		}
+		dst.SetWriteDeadline(time.Now().Add(30 * time.Second))
+		if _, err := dst.Write(buf[:n]); err != nil {
+			return err
+		}
+	}
+}
+
 // Stop 停止所有端口转发
 func (f *Forwarder) Stop() {
 	f.mu.Lock()
