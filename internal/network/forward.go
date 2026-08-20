@@ -25,6 +25,7 @@ func NewForwarder(logger log.Logger) *Forwarder {
 	return &Forwarder{
 		portForwards: make([]*PortForward, 0),
 		listeners:    make([]net.Listener, 0),
+		logger:       logger,
 	}
 }
 
