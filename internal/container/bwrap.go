@@ -270,11 +270,13 @@ func (c *BwrapContainer) buildArgs(spec ContainerSpec) []string {
 
 	// OverlayFS 设置
 	// lower 层（只读根文件系统）
-	args = append(args, "--ro-bind", spec.Rootfs, "/")
+	args = append(args, "--ro-bind", spec.Rootfs, "/lower")
 	// upper 层（可写层）
-	args = append(args, fmt.Sprintf("--bind=%s:/", spec.UpperDir))
-	// work 目录
-	args = append(args, fmt.Sprintf("--bind=%s:/work", spec.WorkDir))
+	args = append(args, "--bind", spec.UpperDir, "/upper")
+	// work 目录（必须与 upper 同设备）
+	args = append(args, "--bind", spec.WorkDir, "/work")
+	// overlay 挂载点
+	args = append(args, "--overlay", "/", "/lower:/upper:/work")
 
 	// 共享内存
 	if spec.ShmSize > 0 {

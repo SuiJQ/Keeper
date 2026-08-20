@@ -105,8 +105,11 @@ func TestBuildArgs(t *testing.T) {
 	// OverlayFS
 	assert.Contains(t, args, "--ro-bind")
 	assert.Contains(t, args, "/rootfs")
-	assert.Contains(t, args, "--bind=/upper:/")
-	assert.Contains(t, args, "--bind=/work:/work")
+	assert.Contains(t, args, "--bind")
+	assert.Contains(t, args, "/upper")
+	assert.Contains(t, args, "/work")
+	assert.Contains(t, args, "--overlay")
+	assert.Contains(t, args, "/lower:/upper:/work")
 
 	// ShmSize
 	assert.Contains(t, args, "--shm-size=128m")
