@@ -274,7 +274,7 @@ func TestCopyDirRecursive(t *testing.T) {
 	// 创建源目录结构
 	srcDir := filepath.Join(tmpDir, "src")
 	dstDir := filepath.Join(tmpDir, "dst")
-	
+
 	err = os.MkdirAll(filepath.Join(srcDir, "subdir"), 0755)
 	require.NoError(t, err)
 	err = os.WriteFile(filepath.Join(srcDir, "file.txt"), []byte("hello"), 0644)
@@ -289,7 +289,7 @@ func TestCopyDirRecursive(t *testing.T) {
 	// 验证文件已复制
 	assert.FileExists(t, filepath.Join(dstDir, "file.txt"))
 	assert.FileExists(t, filepath.Join(dstDir, "subdir", "nested.txt"))
-	
+
 	content, _ := os.ReadFile(filepath.Join(dstDir, "file.txt"))
 	assert.Equal(t, []byte("hello"), content)
 }
@@ -478,4 +478,3 @@ func TestStartStopStatusRecover(t *testing.T) {
 		require.NoError(t, err)
 	}
 }
-

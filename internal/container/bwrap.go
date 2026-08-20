@@ -20,11 +20,11 @@ import (
 
 // BwrapContainer bwrap 容器运行时实现
 type BwrapContainer struct {
-	name     string
-	pid      int
-	cmd      *exec.Cmd
-	status   ContainerStatus
-	logger   log.Logger
+	name   string
+	pid    int
+	cmd    *exec.Cmd
+	status ContainerStatus
+	logger log.Logger
 }
 
 // BwrapFactory bwrap 容器运行时工厂
@@ -77,11 +77,11 @@ func (c *BwrapContainer) Start(ctx context.Context, spec ContainerSpec) (int, er
 
 	c.cmd = cmd
 	c.status = ContainerStatus{
-		State:   "running",
-		PID:     cmd.Process.Pid,
-		PGID:    cmd.Process.Pid,
-		Uptime:  0,
-		Ports:   spec.Ports,
+		State:  "running",
+		PID:    cmd.Process.Pid,
+		PGID:   cmd.Process.Pid,
+		Uptime: 0,
+		Ports:  spec.Ports,
 	}
 
 	c.logger.Info("container started", log.Field{Key: "pid", Value: cmd.Process.Pid})
@@ -91,7 +91,12 @@ func (c *BwrapContainer) Start(ctx context.Context, spec ContainerSpec) (int, er
 // Stop 停止容器
 func (c *BwrapContainer) Stop(ctx context.Context, grace time.Duration) error {
 	c.logger.Info("stopping container",
-		log.Field{Key: "pid", Value: func() int { if c.cmd != nil && c.cmd.Process != nil { return c.cmd.Process.Pid }; return 0 }()},
+		log.Field{Key: "pid", Value: func() int {
+			if c.cmd != nil && c.cmd.Process != nil {
+				return c.cmd.Process.Pid
+			}
+			return 0
+		}()},
 		log.Field{Key: "grace", Value: grace})
 
 	if c.cmd == nil || c.cmd.Process == nil {

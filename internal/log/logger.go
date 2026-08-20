@@ -47,20 +47,20 @@ type Logger interface {
 
 // 预定义字段键
 const (
-	FieldAgentName   = "agent_name"
-	FieldState       = "state"
-	FieldPID         = "pid"
-	FieldPGID        = "pgid"
-	FieldError       = "error"
-	FieldDuration    = "duration_ms"
-	FieldCommand     = "command"
-	FieldStage       = "stage"
-	FieldTimestamp   = "timestamp"
+	FieldAgentName = "agent_name"
+	FieldState     = "state"
+	FieldPID       = "pid"
+	FieldPGID      = "pgid"
+	FieldError     = "error"
+	FieldDuration  = "duration_ms"
+	FieldCommand   = "command"
+	FieldStage     = "stage"
+	FieldTimestamp = "timestamp"
 )
 
 // entry 日志条目
 type entry struct {
-	Level   Level            `json:"level"`
+	Level   Level             `json:"level"`
 	Message string            `json:"message"`
 	Time    time.Time         `json:"timestamp"`
 	Fields  map[string]string `json:"fields,omitempty"`

@@ -385,7 +385,7 @@ func (s *Server) handleToolCall(ctx context.Context, req Request) Response {
 	toolName, ok := req.Params["name"].(string)
 	if !ok {
 		return Response{
-			ID: req.ID,
+			ID:    req.ID,
 			Error: &Error{Code: -32602, Message: "invalid params: missing tool name"},
 		}
 	}
@@ -399,7 +399,7 @@ func (s *Server) handleToolCall(ctx context.Context, req Request) Response {
 	result, err := s.executeTool(ctx, toolName, arguments)
 	if err != nil {
 		return Response{
-			ID: req.ID,
+			ID:    req.ID,
 			Error: &Error{Code: -32603, Message: err.Error()},
 		}
 	}

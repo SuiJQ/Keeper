@@ -27,12 +27,12 @@ type ContainerSpec struct {
 
 // ContainerStatus 容器状态
 type ContainerStatus struct {
-	State   string
-	PID     int
-	PGID    int
-	Error   string
-	Uptime  time.Duration
-	Ports   []PortMapping
+	State  string
+	PID    int
+	PGID   int
+	Error  string
+	Uptime time.Duration
+	Ports  []PortMapping
 }
 
 // Container 容器运行时接口

@@ -11,10 +11,10 @@ import (
 
 // Forwarder 端口转发器
 type Forwarder struct {
-	mu          sync.Mutex
+	mu           sync.Mutex
 	portForwards []*PortForward
-	listeners   []net.Listener
-	logger      log.Logger
+	listeners    []net.Listener
+	logger       log.Logger
 }
 
 // NewForwarder 创建端口转发器

@@ -25,9 +25,9 @@ func NewSOCKS5Server(addr string, auth *ProxyAuth, logger log.Logger) *SOCKS5Ser
 		logger = log.Global()
 	}
 	return &SOCKS5Server{
-		addr:    addr,
-		auth:    auth,
-		logger:  logger,
+		addr:   addr,
+		auth:   auth,
+		logger: logger,
 	}
 }
 
@@ -179,10 +179,10 @@ func (s *SOCKS5Server) handleConnect(conn net.Conn) {
 		target = fmt.Sprintf("%s:%d", domain, port)
 	case 0x04: // IPv6
 		target = fmt.Sprintf("[%x:%x:%x:%x:%x:%x:%x:%x]:%d",
-			(buf[4]<<8)|buf[5], (buf[6]<<8)|buf[7],
-			(buf[8]<<8)|buf[9], (buf[10]<<8)|buf[11],
-			(buf[12]<<8)|buf[13], (buf[14]<<8)|buf[15],
-			(buf[16]<<8)|buf[17], (buf[18]<<8)|buf[19],
+			(int(buf[4])<<8)|int(buf[5]), (int(buf[6])<<8)|int(buf[7]),
+			(int(buf[8])<<8)|int(buf[9]), (int(buf[10])<<8)|int(buf[11]),
+			(int(buf[12])<<8)|int(buf[13]), (int(buf[14])<<8)|int(buf[15]),
+			(int(buf[16])<<8)|int(buf[17]), (int(buf[18])<<8)|int(buf[19]),
 			(int(buf[20])<<8)|int(buf[21]))
 	default:
 		conn.Write([]byte{0x05, 0x08, 0x00, 0x01, 0, 0, 0, 0, 0, 0}) // 地址类型不支持

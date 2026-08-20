@@ -79,12 +79,12 @@ func (sm *StateMachine) CanTransition(to State) error {
 
 	// 允许的状态转换
 	allowed := map[State][]State{
-		StateCreated:    {StateRunning},
-		StateStopped:    {StateRunning},
-		StateRunning:    {StateStopped, StateFatalDState},
-		StateFatalKernel: {StateStopped},
-		StateFatalDState: {StateStopped},
-		StateFatalBwrap:  {StateStopped},
+		StateCreated:      {StateRunning},
+		StateStopped:      {StateRunning},
+		StateRunning:      {StateStopped, StateFatalDState},
+		StateFatalKernel:  {StateStopped},
+		StateFatalDState:  {StateStopped},
+		StateFatalBwrap:   {StateStopped},
 		StateFatalNoSpace: {StateStopped},
 	}
 

@@ -15,25 +15,25 @@ import (
 
 // ProbeResult 探测结果
 type ProbeResult struct {
-	KernelVersion     string
-	OverlayUserNS     bool
-	BwrapAvailable    bool
-	SeccompAvailable  bool
-	UnshareAvailable  bool
-	MissingFeatures   []string
-	Errors            []string
+	KernelVersion    string
+	OverlayUserNS    bool
+	BwrapAvailable   bool
+	SeccompAvailable bool
+	UnshareAvailable bool
+	MissingFeatures  []string
+	Errors           []string
 }
 
 // ProbeEnvironment 探测环境
 func ProbeEnvironment() *ProbeResult {
 	result := &ProbeResult{
-		KernelVersion:   runtime.GOOS + "/" + runtime.GOARCH,
-		OverlayUserNS:   false,
-		BwrapAvailable:  false,
+		KernelVersion:    runtime.GOOS + "/" + runtime.GOARCH,
+		OverlayUserNS:    false,
+		BwrapAvailable:   false,
 		SeccompAvailable: false,
 		UnshareAvailable: false,
-		MissingFeatures: make([]string, 0),
-		Errors:          make([]string, 0),
+		MissingFeatures:  make([]string, 0),
+		Errors:           make([]string, 0),
 	}
 
 	// 探测内核版本

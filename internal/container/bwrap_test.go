@@ -85,13 +85,13 @@ func TestBuildArgs(t *testing.T) {
 	require.True(t, ok)
 
 	spec := ContainerSpec{
-		Rootfs:    "/rootfs",
-		UpperDir:  "/upper",
-		WorkDir:   "/work",
-		Workspace: "/workspace",
-		ShmSize:   128,
-		Ports:     []PortMapping{{Host: 8080, Container: 80}},
-		Envvars:   []string{"FOO=bar", "BAZ=qux"},
+		Rootfs:     "/rootfs",
+		UpperDir:   "/upper",
+		WorkDir:    "/work",
+		Workspace:  "/workspace",
+		ShmSize:    128,
+		Ports:      []PortMapping{{Host: 8080, Container: 80}},
+		Envvars:    []string{"FOO=bar", "BAZ=qux"},
 		SeccompBPF: []byte{0x01, 0x02, 0x03},
 	}
 

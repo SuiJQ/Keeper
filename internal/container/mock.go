@@ -11,13 +11,13 @@ import (
 
 // MockContainer 模拟容器运行时（用于测试）
 type MockContainer struct {
-	mu       sync.Mutex
-	name     string
-	status   ContainerStatus
-	logger   log.Logger
-	started  bool
-	stopped  bool
-	execs    []ExecRequest
+	mu      sync.Mutex
+	name    string
+	status  ContainerStatus
+	logger  log.Logger
+	started bool
+	stopped bool
+	execs   []ExecRequest
 }
 
 // MockFactory 模拟容器运行时工厂
@@ -78,11 +78,11 @@ func (c *MockContainer) Start(ctx context.Context, spec ContainerSpec) (int, err
 
 	c.logger.Info("starting mock container")
 	c.status = ContainerStatus{
-		State:   "running",
-		PID:     12345,
-		PGID:    12345,
-		Uptime:  0,
-		Ports:   spec.Ports,
+		State:  "running",
+		PID:    12345,
+		PGID:   12345,
+		Uptime: 0,
+		Ports:  spec.Ports,
 	}
 	c.started = true
 
@@ -130,11 +130,11 @@ func (c *MockContainer) Status(ctx context.Context) (*ContainerStatus, error) {
 	defer c.mu.Unlock()
 
 	return &ContainerStatus{
-		State:   c.status.State,
-		PID:     c.status.PID,
-		PGID:    c.status.PGID,
-		Uptime:  c.status.Uptime,
-		Ports:   c.status.Ports,
+		State:  c.status.State,
+		PID:    c.status.PID,
+		PGID:   c.status.PGID,
+		Uptime: c.status.Uptime,
+		Ports:  c.status.Ports,
 	}, nil
 }
 
