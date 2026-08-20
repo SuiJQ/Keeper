@@ -152,3 +152,75 @@ func TestCheckKernelSupport(t *testing.T) {
 	supported := bwrap.checkKernelSupport()
 	assert.False(t, supported)
 }
+
+func TestCheckDependencies(t *testing.T) {
+	factory := NewBwrapFactory()
+	container, err := factory.Create("test")
+	require.NoError(t, err)
+
+	bwrap, ok := container.(*BwrapContainer)
+	require.True(t, ok)
+
+	// 检查依赖应该返回错误（缺少 bwrap 或内核支持）
+	err = bwrap.checkDependencies()
+	assert.Error(t, err)
+}
+
+func TestBuildArgsMinimal(t *testing.T) {
+	factory := NewBwrapFactory()
+	container, err := factory.Create("test")
+	require.NoError(t, err)
+
+	bwrap, ok := container.(*BwrapContainer)
+	require.True(t, ok)
+
+	spec := ContainerSpec{
+		Rootfs:   "/rootfs",
+		UpperDir: "/upper",
+		WorkDir:  "/work",
+	}
+
+	args := bwrap.buildArgs(spec)
+
+	// 基本参数
+	assert.Contains(t, args, "--unshare-all")
+	assert.Contains(t, args, "--die-with-parent")
+	assert.Contains(t, args, "--new-session")
+
+	// OverlayFS
+	assert.Contains(t, args, "--ro-bind")
+	assert.Contains(t, args, "/rootfs")
+	assert.Contains(t, args, "--bind")
+	assert.Contains(t, args, "/upper")
+	assert.Contains(t, args, "/work")
+	assert.Contains(t, args, "--overlay")
+	assert.Contains(t, args, "/lower:/upper:/work")
+
+	// 默认命令
+	assert.Contains(t, args, "--")
+	assert.Contains(t, args, "/bin/sh")
+	assert.Contains(t, args, "-c")
+	assert.Contains(t, args, "sleep infinity")
+}
+
+func TestBuildArgsWithPorts(t *testing.T) {
+	factory := NewBwrapFactory()
+	container, err := factory.Create("test")
+	require.NoError(t, err)
+
+	bwrap, ok := container.(*BwrapContainer)
+	require.True(t, ok)
+
+	spec := ContainerSpec{
+		Rootfs:   "/rootfs",
+		UpperDir: "/upper",
+		WorkDir:  "/work",
+		Ports:    []PortMapping{{Host: 8080, Container: 80}, {Host: 8443, Container: 443}},
+	}
+
+	args := bwrap.buildArgs(spec)
+
+	// bwrap 不直接支持端口映射，所以 ports 不应该出现在参数中
+	assert.NotContains(t, args, "8080")
+	assert.NotContains(t, args, "8443")
+}
