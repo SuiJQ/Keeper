@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -281,4 +282,167 @@ func TestAgentMetaPaths(t *testing.T) {
 	assert.Equal(t, filepath.Join(tmpDir, "agents", "test-agent", "upper"), meta.UpperDir)
 	assert.Equal(t, filepath.Join(tmpDir, "agents", "test-agent", "work"), meta.WorkDir)
 	assert.Equal(t, filepath.Join(tmpDir, "agents", "test-agent", "workspace"), meta.Workspace)
+}
+
+func TestListSnapshots(t *testing.T) {
+	tmpDir := t.TempDir()
+	store, err := NewStore(tmpDir)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	_, err = store.CreateAgent(ctx, "test-agent", 64, 1024*1024*1024)
+	require.NoError(t, err)
+
+	// 写入一些文件
+	upperFile := filepath.Join(tmpDir, "agents", "test-agent", "upper", "data.txt")
+	err = os.WriteFile(upperFile, []byte("snapshot data"), 0644)
+	require.NoError(t, err)
+
+	// 创建多个快照
+	err = store.CreateSnapshot(ctx, "test-agent", "snap1")
+	require.NoError(t, err)
+	
+	time.Sleep(10 * time.Millisecond) // 确保时间不同
+	
+	err = store.CreateSnapshot(ctx, "test-agent", "snap2")
+	require.NoError(t, err)
+
+	// 列出快照
+	snapshots, err := store.ListSnapshots(ctx, "test-agent")
+	require.NoError(t, err)
+	assert.Len(t, snapshots, 2)
+	
+	// 验证按时间倒序排列
+	assert.Equal(t, "snap2", snapshots[0].SnapshotID)
+	assert.Equal(t, "snap1", snapshots[1].SnapshotID)
+	
+	// 验证 ParentID
+	assert.Equal(t, "snap1", snapshots[0].ParentID)
+	assert.Empty(t, snapshots[1].ParentID)
+}
+
+func TestListSnapshotsEmpty(t *testing.T) {
+	tmpDir := t.TempDir()
+	store, err := NewStore(tmpDir)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	_, err = store.CreateAgent(ctx, "test-agent", 64, 1024*1024*1024)
+	require.NoError(t, err)
+
+	// 列出不存在的快照
+	snapshots, err := store.ListSnapshots(ctx, "test-agent")
+	require.NoError(t, err)
+	assert.Empty(t, snapshots)
+}
+
+func TestRollbackSnapshotMultiple(t *testing.T) {
+	tmpDir := t.TempDir()
+	store, err := NewStore(tmpDir)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	_, err = store.CreateAgent(ctx, "test-agent", 64, 1024*1024*1024)
+	require.NoError(t, err)
+
+	// 写入初始文件
+	upperFile := filepath.Join(tmpDir, "agents", "test-agent", "upper", "data.txt")
+	err = os.WriteFile(upperFile, []byte("v1"), 0644)
+	require.NoError(t, err)
+
+	// 创建快照1
+	err = store.CreateSnapshot(ctx, "test-agent", "snap1")
+	require.NoError(t, err)
+
+	// 修改文件
+	err = os.WriteFile(upperFile, []byte("v2"), 0644)
+	require.NoError(t, err)
+
+	// 创建快照2
+	err = store.CreateSnapshot(ctx, "test-agent", "snap2")
+	require.NoError(t, err)
+
+	// 再次修改文件
+	err = os.WriteFile(upperFile, []byte("v3"), 0644)
+	require.NoError(t, err)
+
+	// 回滚到快照2
+	err = store.RollbackSnapshot(ctx, "test-agent", "snap2")
+	require.NoError(t, err)
+	
+	content, _ := os.ReadFile(upperFile)
+	assert.Equal(t, []byte("v2"), content)
+
+	// 回滚到快照1
+	err = store.RollbackSnapshot(ctx, "test-agent", "snap1")
+	require.NoError(t, err)
+	
+	content, _ = os.ReadFile(upperFile)
+	assert.Equal(t, []byte("v1"), content)
+}
+
+func TestCreateSnapshotWithWorkspace(t *testing.T) {
+	tmpDir := t.TempDir()
+	store, err := NewStore(tmpDir)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	_, err = store.CreateAgent(ctx, "test-agent", 64, 1024*1024*1024)
+	require.NoError(t, err)
+
+	// 写入 upper 和 workspace 文件
+	upperFile := filepath.Join(tmpDir, "agents", "test-agent", "upper", "data.txt")
+	workspaceFile := filepath.Join(tmpDir, "agents", "test-agent", "workspace", "work.txt")
+	
+	err = os.WriteFile(upperFile, []byte("upper data"), 0644)
+	require.NoError(t, err)
+	
+	err = os.MkdirAll(filepath.Dir(workspaceFile), 0755)
+	require.NoError(t, err)
+	err = os.WriteFile(workspaceFile, []byte("workspace data"), 0644)
+	require.NoError(t, err)
+
+	// 创建快照
+	err = store.CreateSnapshot(ctx, "test-agent", "snap1")
+	require.NoError(t, err)
+
+	// 验证快照包含 upper 和 workspace
+	snapshotDir := filepath.Join(tmpDir, "agents", "test-agent", "backups", "snap1")
+	assert.FileExists(t, filepath.Join(snapshotDir, "upper.tar.gz"))
+	assert.FileExists(t, filepath.Join(snapshotDir, "workspace.tar.gz"))
+	assert.FileExists(t, filepath.Join(snapshotDir, "meta.json"))
+}
+
+func TestForkAgentWithSnapshots(t *testing.T) {
+	tmpDir := t.TempDir()
+	store, err := NewStore(tmpDir)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	_, err = store.CreateAgent(ctx, "source", 64, 1024*1024*1024)
+	require.NoError(t, err)
+
+	// 写入文件
+	upperFile := filepath.Join(tmpDir, "agents", "source", "upper", "data.txt")
+	err = os.WriteFile(upperFile, []byte("source data"), 0644)
+	require.NoError(t, err)
+
+	// 创建快照
+	err = store.CreateSnapshot(ctx, "source", "snap1")
+	require.NoError(t, err)
+
+	// Fork
+	_, err = store.ForkAgent(ctx, "source", "forked")
+	require.NoError(t, err)
+
+	// 验证 fork 的 agent 没有快照
+	snapshots, err := store.ListSnapshots(ctx, "forked")
+	require.NoError(t, err)
+	assert.Empty(t, snapshots)
+	
+	// 验证 fork 的 agent 有正确的文件
+	forkedFile := filepath.Join(tmpDir, "agents", "forked", "upper", "data.txt")
+	assert.FileExists(t, forkedFile)
+	content, _ := os.ReadFile(forkedFile)
+	assert.Equal(t, []byte("source data"), content)
 }
