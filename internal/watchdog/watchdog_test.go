@@ -3,6 +3,7 @@ package watchdog
 import (
 	"context"
 	"os"
+	"os/exec"
 	"testing"
 	"time"
 
@@ -129,4 +130,69 @@ func TestWatchdogMonitorLoop(t *testing.T) {
 	running = wd.running
 	wd.mu.Unlock()
 	assert.False(t, running)
+}
+
+func TestWatchdogRegisterUnregister(t *testing.T) {
+	wd := NewWatchdog(WatchdogConfig{}, nil)
+
+	// 注册 agent
+	wd.RegisterAgent("test-agent", 12345)
+
+	// 验证已注册
+	wd.mu.Lock()
+	_, exists := wd.agents["test-agent"]
+	wd.mu.Unlock()
+	assert.True(t, exists)
+
+	// 注销 agent
+	wd.UnregisterAgent("test-agent")
+
+	// 验证已注销
+	wd.mu.Lock()
+	_, exists = wd.agents["test-agent"]
+	wd.mu.Unlock()
+	assert.False(t, exists)
+}
+
+func TestWatchdogCheckAgentTimeout(t *testing.T) {
+	wd := NewWatchdog(WatchdogConfig{
+		Timeout:       100 * time.Millisecond,
+		CheckInterval: 50 * time.Millisecond,
+	}, nil)
+
+	ctx := context.Background()
+	err := wd.Start(ctx)
+	require.NoError(t, err)
+
+	// 注册一个 agent，但使用一个不存在的 PID
+	wd.RegisterAgent("timeout-agent", 99999)
+
+	// 等待超时检测
+	time.Sleep(300 * time.Millisecond)
+
+	// 验证 agent 已被注销
+	wd.mu.Lock()
+	_, exists := wd.agents["timeout-agent"]
+	wd.mu.Unlock()
+	assert.False(t, exists, "agent should be unregistered after timeout")
+
+	wd.Stop()
+}
+
+func TestIsProcessAlive(t *testing.T) {
+	// 启动一个子进程用于测试
+	cmd := exec.Command("sleep", "10")
+	err := cmd.Start()
+	require.NoError(t, err)
+	defer cmd.Process.Kill()
+
+	pid := cmd.Process.Pid
+
+	// 子进程应该存活
+	assert.True(t, isProcessAlive(pid))
+
+	// 无效 PID 应该返回 false
+	assert.False(t, isProcessAlive(-1))
+	assert.False(t, isProcessAlive(0))
+	assert.False(t, isProcessAlive(999999))
 }

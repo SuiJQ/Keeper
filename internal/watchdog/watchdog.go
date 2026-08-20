@@ -211,15 +211,8 @@ func isProcessAlive(pid int) bool {
 		return false
 	}
 
-	// 发送信号 0 检查进程是否存在
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
-
-	// 在 Unix 系统上，Signal(nil) 或 Signal(0) 不实际发送信号
-	// 但 err 表示进程不存在
-	err = proc.Signal(os.Signal(nil))
+	// 读取 /proc/<pid>/stat 检查进程是否存在
+	_, err := os.Stat(fmt.Sprintf("/proc/%d/stat", pid))
 	return err == nil
 }
 
