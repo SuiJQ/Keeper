@@ -475,6 +475,104 @@ func TestBwrapContainerStatusRunning(t *testing.T) {
 	assert.Equal(t, 12345, status.PID)
 }
 
+// TestBwrapContainerLifecycle 测试 bwrap 容器完整生命周期（依赖检查失败场景）
+func TestBwrapContainerLifecycle(t *testing.T) {
+	// 注意：在当前环境（内核 5.10，无 CONFIG_OVERLAY_FS_USERNS）下，
+	// bwrap 无法真正启动。此测试验证生命周期方法的错误处理路径。
+
+	c := &BwrapContainer{
+		name:   "lifecycle-test",
+		logger: &testLogger{},
+	}
+
+	ctx := context.Background()
+	spec := ContainerSpec{
+		Name:     "lifecycle-test",
+		Rootfs:   "/tmp/rootfs",
+		UpperDir: "/tmp/upper",
+		WorkDir:  "/tmp/work",
+		ShmSize:  64,
+		Envvars:  []string{"TEST=1"},
+	}
+
+	// 1. 启动（预期失败）
+	pid, err := c.Start(ctx, spec)
+	assert.Error(t, err)
+	assert.Equal(t, 0, pid)
+	if err != nil {
+		msg := err.Error()
+		assert.True(t,
+			strings.Contains(msg, "bwrap") || strings.Contains(msg, "kernel") || strings.Contains(msg, "CONFIG_OVERLAY_FS_USERNS"),
+			"error should mention bwrap or kernel support: %s", msg)
+	}
+
+	// 2. 状态查询（应返回当前状态，可能是 created 或空）
+	status, err := c.Status(ctx)
+	require.NoError(t, err)
+	assert.NotNil(t, status)
+	// 状态可能是 created（如果通过 Factory 创建）或空（直接创建）
+	assert.Contains(t, []string{"created", ""}, status.State)
+
+	// 3. 执行命令（应失败）
+	resp, err := c.Exec(ctx, ExecRequest{
+		Command: "echo test",
+		Timeout: 5 * time.Second,
+	})
+	assert.Error(t, err)
+	assert.Nil(t, resp)
+
+	// 4. 停止（静默成功）
+	err = c.Stop(ctx, 5*time.Second)
+	require.NoError(t, err)
+
+	// 5. 关闭（清理）
+	err = c.Close()
+	require.NoError(t, err)
+	assert.Equal(t, "destroyed", c.status.State)
+}
+
+// TestBwrapContainerBuildArgsWithWorkspace 测试带工作区的 buildArgs
+func TestBwrapContainerBuildArgsWithWorkspace(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "keeper-bwrap-test-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	rootfs := filepath.Join(tmpDir, "rootfs")
+	upper := filepath.Join(tmpDir, "upper")
+	work := filepath.Join(tmpDir, "work")
+	workspace := filepath.Join(tmpDir, "workspace")
+	require.NoError(t, os.MkdirAll(rootfs, 0755))
+	require.NoError(t, os.MkdirAll(upper, 0755))
+	require.NoError(t, os.MkdirAll(work, 0755))
+	require.NoError(t, os.MkdirAll(workspace, 0755))
+
+	c := &BwrapContainer{logger: &testLogger{}}
+	spec := ContainerSpec{
+		Name:      "test",
+		Rootfs:    rootfs,
+		UpperDir:  upper,
+		WorkDir:   work,
+		Workspace: workspace,
+		ShmSize:   128,
+		Envvars:   []string{"KEY=VALUE"},
+	}
+
+	args, bpfFile := c.buildArgs(spec)
+
+	// 验证工作区绑定
+	assert.Contains(t, args, "--bind="+workspace+":/workspace")
+	// 验证共享内存大小
+	assert.Contains(t, args, "--shm-size=128m")
+	// 验证环境变量
+	assert.Contains(t, args, "--setenv=KEY=VALUE")
+	// 验证默认 shell
+	assert.Contains(t, args, "/bin/sh")
+	assert.Contains(t, args, "-c")
+	assert.Contains(t, args, "sleep infinity")
+	// BPF 文件应为空（未提供自定义 BPF）
+	assert.Empty(t, bpfFile)
+}
+
 // testLogger 测试用日志记录器
 type testLogger struct{}
 
