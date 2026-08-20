@@ -241,6 +241,7 @@ func (s *fileStore) ForkAgent(ctx context.Context, source, target string) (*Agen
 	}
 
 	// 复制目录（同设备硬链接，跨设备物理拷贝）
+	// 注意：work 目录不复制，启动时自动重建
 	copyDirs := []struct {
 		src  string
 		dst  string
@@ -252,7 +253,7 @@ func (s *fileStore) ForkAgent(ctx context.Context, source, target string) (*Agen
 		{filepath.Join(sourcePath, "backups"), filepath.Join(targetPath, "backups"), false},
 		{filepath.Join(sourcePath, "logs"), filepath.Join(targetPath, "logs"), true},
 		{filepath.Join(sourcePath, "downloads"), filepath.Join(targetPath, "downloads"), true},
-		{filepath.Join(sourcePath, "work"), filepath.Join(targetPath, "work"), false},
+		{filepath.Join(sourcePath, "work"), filepath.Join(targetPath, "work"), true}, // 不复制 work 目录
 	}
 
 	for _, cd := range copyDirs {

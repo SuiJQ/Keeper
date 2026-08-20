@@ -128,6 +128,12 @@ func TestForkAgent(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []byte("hello"), content)
 
+	// 确认 work 目录存在但是空的（启动时自动重建，不复制源内容）
+	workDir := filepath.Join(tmpDir, "agents", "target", "work")
+	entries, err := os.ReadDir(workDir)
+	require.NoError(t, err)
+	assert.Empty(t, entries, "work directory should be empty")
+
 	// 确认运行时文件已清理
 	runtimeFiles := []string{"pgid", ".watchdog", ".api_sock", ".forward_sock"}
 	for _, f := range runtimeFiles {
