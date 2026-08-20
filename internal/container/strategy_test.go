@@ -204,3 +204,162 @@ func TestStrategyInterfaces(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, overlay)
 }
+
+func TestDefaultNetworkStrategy(t *testing.T) {
+	strat := NewDefaultNetworkStrategy(nil)
+	assert.Equal(t, "default", strat.Name())
+	
+	args, err := strat.Configure(ContainerSpec{})
+	require.NoError(t, err)
+	// 默认情况下可能返回空切片
+	assert.NotNil(t, args)
+}
+
+func TestDefaultNetworkStrategyWithEnv(t *testing.T) {
+	strat := NewDefaultNetworkStrategy(nil)
+	
+	args, err := strat.Configure(ContainerSpec{
+		Envvars: []string{"FOO=bar", "BAZ=qux"},
+	})
+	require.NoError(t, err)
+	assert.Contains(t, args, "--setenv=NAMESERVER=8.8.8.8")
+}
+
+func TestNewNetworkStrategy(t *testing.T) {
+	tests := []struct {
+		name    string
+		arg     string
+		want    string
+		wantErr bool
+	}{
+		{"default", "default", "default", false},
+		{"empty", "", "default", false},
+		{"invalid", "invalid", "", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := NewNetworkStrategy(tt.arg, nil)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.want, got.Name())
+			}
+		})
+	}
+}
+
+func TestBwrapContainerSetNetworkStrategy(t *testing.T) {
+	factory := NewBwrapFactory()
+	container, err := factory.Create("test")
+	require.NoError(t, err)
+	
+	bwrap, ok := container.(*BwrapContainer)
+	require.True(t, ok)
+	
+	// 设置网络策略
+	networkStrat := NewDefaultNetworkStrategy(nil)
+	bwrap.SetNetworkStrategy(networkStrat)
+	assert.NotNil(t, bwrap.networkStrat)
+}
+
+func TestDefaultResourceStrategy(t *testing.T) {
+	strat := NewDefaultResourceStrategy(nil)
+	assert.Equal(t, "default", strat.Name())
+	
+	args, err := strat.Configure(ContainerSpec{})
+	require.NoError(t, err)
+	assert.Empty(t, args)
+	
+	args, err = strat.Configure(ContainerSpec{ShmSize: 64})
+	require.NoError(t, err)
+	assert.Contains(t, args, "--shm-size=64m")
+}
+
+func TestNewResourceStrategy(t *testing.T) {
+	tests := []struct {
+		name    string
+		arg     string
+		want    string
+		wantErr bool
+	}{
+		{"default", "default", "default", false},
+		{"empty", "", "default", false},
+		{"invalid", "invalid", "", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := NewResourceStrategy(tt.arg, nil)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.want, got.Name())
+			}
+		})
+	}
+}
+
+func TestBwrapContainerSetResourceStrategy(t *testing.T) {
+	factory := NewBwrapFactory()
+	container, err := factory.Create("test")
+	require.NoError(t, err)
+	
+	bwrap, ok := container.(*BwrapContainer)
+	require.True(t, ok)
+	
+	// 设置资源限制策略
+	resourceStrat := NewDefaultResourceStrategy(nil)
+	bwrap.SetResourceStrategy(resourceStrat)
+	assert.NotNil(t, bwrap.resourceStrat)
+}
+
+func TestDefaultLogStrategy(t *testing.T) {
+	strat := NewDefaultLogStrategy(nil)
+	assert.Equal(t, "default", strat.Name())
+	
+	args, err := strat.Configure(ContainerSpec{})
+	require.NoError(t, err)
+	assert.Contains(t, args, "--log-level=info")
+}
+
+func TestNewLogStrategy(t *testing.T) {
+	tests := []struct {
+		name    string
+		arg     string
+		want    string
+		wantErr bool
+	}{
+		{"default", "default", "default", false},
+		{"empty", "", "default", false},
+		{"invalid", "invalid", "", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := NewLogStrategy(tt.arg, nil)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.want, got.Name())
+			}
+		})
+	}
+}
+
+func TestBwrapContainerSetLogStrategy(t *testing.T) {
+	factory := NewBwrapFactory()
+	container, err := factory.Create("test")
+	require.NoError(t, err)
+	
+	bwrap, ok := container.(*BwrapContainer)
+	require.True(t, ok)
+	
+	// 设置日志策略
+	logStrat := NewDefaultLogStrategy(nil)
+	bwrap.SetLogStrategy(logStrat)
+	assert.NotNil(t, bwrap.logStrat)
+}

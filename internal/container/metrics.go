@@ -48,3 +48,13 @@ func RecordContainerExecDuration(runtime string, duration float64) {
 func SetContainerActive(runtime string, count float64) {
 	ContainerActiveGauge.Set(count, runtime)
 }
+
+// 容器错误指标
+var (
+	ContainerErrorCounter = metrics.RegisterCounter("keeper_container_errors_total", "Total number of container errors", []string{"runtime", "operation", "error_type"})
+)
+
+// RecordContainerError 记录容器错误
+func RecordContainerError(runtime, operation, errorType string) {
+	ContainerErrorCounter.Inc(runtime, operation, errorType)
+}

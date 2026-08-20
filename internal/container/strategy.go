@@ -170,3 +170,163 @@ func (o *OverlayFSStrategy) BuildArgs(lower, upper, work, mountPoint string) []s
 func (o *OverlayFSStrategy) Name() string {
 	return "overlayfs"
 }
+
+// NetworkStrategy 网络策略接口
+type NetworkStrategy interface {
+	// Name 返回策略名称
+	Name() string
+	
+	// Configure 配置容器网络
+	Configure(spec ContainerSpec) ([]string, error)
+}
+
+// DefaultNetworkStrategy 默认网络策略
+type DefaultNetworkStrategy struct {
+	logger log.Logger
+}
+
+// NewDefaultNetworkStrategy 创建默认网络策略
+func NewDefaultNetworkStrategy(logger log.Logger) *DefaultNetworkStrategy {
+	if logger == nil {
+		logger = log.Global()
+	}
+	return &DefaultNetworkStrategy{logger: logger}
+}
+
+// Name 返回策略名称
+func (s *DefaultNetworkStrategy) Name() string {
+	return "default"
+}
+
+// Configure 配置容器网络
+func (s *DefaultNetworkStrategy) Configure(spec ContainerSpec) ([]string, error) {
+	args := []string{}
+	
+	// 配置 DNS
+	if len(spec.Envvars) > 0 {
+		// 设置 DNS 配置
+		args = append(args, "--setenv=NAMESERVER=8.8.8.8")
+		args = append(args, "--setenv=NAMESERVER=8.8.4.4")
+	}
+	
+	return args, nil
+}
+
+// NewNetworkStrategy 创建网络策略
+func NewNetworkStrategy(name string, logger log.Logger) (NetworkStrategy, error) {
+	if logger == nil {
+		logger = log.Global()
+	}
+	
+	switch name {
+	case "", "default":
+		return NewDefaultNetworkStrategy(logger), nil
+	default:
+		return nil, fmt.Errorf("unknown network strategy: %s", name)
+	}
+}
+
+// ResourceStrategy 资源限制策略接口
+type ResourceStrategy interface {
+	// Name 返回策略名称
+	Name() string
+	
+	// Configure 配置容器资源限制
+	Configure(spec ContainerSpec) ([]string, error)
+}
+
+// DefaultResourceStrategy 默认资源限制策略
+type DefaultResourceStrategy struct {
+	logger log.Logger
+}
+
+// NewDefaultResourceStrategy 创建默认资源限制策略
+func NewDefaultResourceStrategy(logger log.Logger) *DefaultResourceStrategy {
+	if logger == nil {
+		logger = log.Global()
+	}
+	return &DefaultResourceStrategy{logger: logger}
+}
+
+// Name 返回策略名称
+func (s *DefaultResourceStrategy) Name() string {
+	return "default"
+}
+
+// Configure 配置容器资源限制
+func (s *DefaultResourceStrategy) Configure(spec ContainerSpec) ([]string, error) {
+	args := []string{}
+	
+	// 配置共享内存大小
+	if spec.ShmSize > 0 {
+		args = append(args, fmt.Sprintf("--shm-size=%dm", spec.ShmSize))
+	}
+	
+	return args, nil
+}
+
+// NewResourceStrategy 创建资源限制策略
+func NewResourceStrategy(name string, logger log.Logger) (ResourceStrategy, error) {
+	if logger == nil {
+		logger = log.Global()
+	}
+	
+	switch name {
+	case "", "default":
+		return NewDefaultResourceStrategy(logger), nil
+	default:
+		return nil, fmt.Errorf("unknown resource strategy: %s", name)
+	}
+}
+
+// LogStrategy 日志策略接口
+type LogStrategy interface {
+	// Name 返回策略名称
+	Name() string
+	
+	// Configure 配置容器日志
+	Configure(spec ContainerSpec) ([]string, error)
+}
+
+// DefaultLogStrategy 默认日志策略
+type DefaultLogStrategy struct {
+	logger log.Logger
+}
+
+// NewDefaultLogStrategy 创建默认日志策略
+func NewDefaultLogStrategy(logger log.Logger) *DefaultLogStrategy {
+	if logger == nil {
+		logger = log.Global()
+	}
+	return &DefaultLogStrategy{logger: logger}
+}
+
+// Name 返回策略名称
+func (s *DefaultLogStrategy) Name() string {
+	return "default"
+}
+
+// Configure 配置容器日志
+func (s *DefaultLogStrategy) Configure(spec ContainerSpec) ([]string, error) {
+	args := []string{}
+	
+	// 配置日志输出
+	args = append(args, "--log-level=info")
+	args = append(args, "--log-file=/dev/null")
+	
+	return args, nil
+}
+
+// NewLogStrategy 创建日志策略
+func NewLogStrategy(name string, logger log.Logger) (LogStrategy, error) {
+	if logger == nil {
+		logger = log.Global()
+	}
+	
+	switch name {
+	case "", "default":
+		return NewDefaultLogStrategy(logger), nil
+	default:
+		return nil, fmt.Errorf("unknown log strategy: %s", name)
+	}
+}

@@ -28,6 +28,9 @@ type BwrapContainer struct {
 	logger       log.Logger
 	seccompStrat SeccompStrategy
 	overlayStrat OverlayStrategy
+	networkStrat NetworkStrategy
+	resourceStrat ResourceStrategy
+	logStrat     LogStrategy
 }
 
 // SetSeccompStrategy 设置 Seccomp 策略
@@ -38,6 +41,21 @@ func (c *BwrapContainer) SetSeccompStrategy(strategy SeccompStrategy) {
 // SetOverlayStrategy 设置 Overlay 策略
 func (c *BwrapContainer) SetOverlayStrategy(strategy OverlayStrategy) {
 	c.overlayStrat = strategy
+}
+
+// SetNetworkStrategy 设置网络策略
+func (c *BwrapContainer) SetNetworkStrategy(strategy NetworkStrategy) {
+	c.networkStrat = strategy
+}
+
+// SetResourceStrategy 设置资源限制策略
+func (c *BwrapContainer) SetResourceStrategy(strategy ResourceStrategy) {
+	c.resourceStrat = strategy
+}
+
+// SetLogStrategy 设置日志策略
+func (c *BwrapContainer) SetLogStrategy(strategy LogStrategy) {
+	c.logStrat = strategy
 }
 
 // BwrapFactory bwrap 容器运行时工厂

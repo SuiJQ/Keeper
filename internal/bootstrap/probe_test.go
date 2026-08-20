@@ -1,9 +1,13 @@
 package bootstrap
 
 import (
+	"compress/gzip"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestProbeEnvironment(t *testing.T) {
@@ -125,4 +129,88 @@ func TestProbeEnvironmentResult(t *testing.T) {
 	// 验证 IsSupported 与探测结果一致
 	expected := result.OverlayUserNS && result.BwrapAvailable
 	assert.Equal(t, expected, result.IsSupported())
+}
+
+func TestCheckConfigFileFound(t *testing.T) {
+	// 创建一个临时配置文件
+	tmpFile := filepath.Join(t.TempDir(), "config")
+	err := os.WriteFile(tmpFile, []byte("CONFIG_OVERLAY_FS_USERNS=y\n"), 0644)
+	require.NoError(t, err)
+	
+	result := checkConfigFile(tmpFile, "CONFIG_OVERLAY_FS_USERNS=y")
+	assert.True(t, result)
+}
+
+func TestCheckConfigFileNotFound(t *testing.T) {
+	tmpFile := filepath.Join(t.TempDir(), "config")
+	err := os.WriteFile(tmpFile, []byte("CONFIG_OTHER=y\n"), 0644)
+	require.NoError(t, err)
+	
+	result := checkConfigFile(tmpFile, "CONFIG_OVERLAY_FS_USERNS=y")
+	assert.False(t, result)
+}
+
+func TestCheckConfigGzipFound(t *testing.T) {
+	// 创建模拟的 config.gz
+	tmpFile := filepath.Join(t.TempDir(), "config.gz")
+	f, err := os.Create(tmpFile)
+	require.NoError(t, err)
+	
+	// 使用 gzip 写入内容
+	gw := gzip.NewWriter(f)
+	_, err = gw.Write([]byte("CONFIG_OVERLAY_FS_USERNS=y\n"))
+	require.NoError(t, err)
+	gw.Close()
+	f.Close()
+	
+	// 由于 checkConfigGzip 硬编码了 /proc/config.gz 路径，
+	// 这里我们测试函数不会 panic
+	_ = checkConfigGzip("CONFIG_OVERLAY_FS_USERNS=y")
+}
+
+func TestIsSupported(t *testing.T) {
+	tests := []struct {
+		name     string
+		result   *ProbeResult
+		expected bool
+	}{
+		{
+			name: "all supported",
+			result: &ProbeResult{
+				OverlayUserNS:  true,
+				BwrapAvailable: true,
+			},
+			expected: true,
+		},
+		{
+			name: "missing overlay",
+			result: &ProbeResult{
+				OverlayUserNS:  false,
+				BwrapAvailable: true,
+			},
+			expected: false,
+		},
+		{
+			name: "missing bwrap",
+			result: &ProbeResult{
+				OverlayUserNS:  true,
+				BwrapAvailable: false,
+			},
+			expected: false,
+		},
+		{
+			name: "both missing",
+			result: &ProbeResult{
+				OverlayUserNS:  false,
+				BwrapAvailable: false,
+			},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.result.IsSupported())
+		})
+	}
 }

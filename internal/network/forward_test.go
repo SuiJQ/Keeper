@@ -137,3 +137,46 @@ func (l *testLogger) Fatal(msg string, fields ...log.Field)     {}
 func (l *testLogger) WithFields(fields ...log.Field) log.Logger { return l }
 func (l *testLogger) Sync() error                               { return nil }
 func (l *testLogger) SetOutput(w io.Writer)                     {}
+
+// TestNetworkMetricsRecording 测试网络指标记录
+func TestNetworkMetricsRecording(t *testing.T) {
+	RecordPortForward("success")
+	RecordPortForward("error")
+	RecordPortForwardDuration(0.5)
+	
+	RecordProxyConnection("success")
+	RecordProxyConnection("error")
+	RecordProxyConnectionDuration(1.2)
+	
+	RecordDataTransfer("upload", 1024)
+	RecordDataTransfer("download", 2048)
+}
+
+// TestNetworkMetricsConcurrent 并发测试网络指标
+func TestNetworkMetricsConcurrent(t *testing.T) {
+	done := make(chan bool, 10)
+	for i := 0; i < 10; i++ {
+		go func(id int) {
+			RecordPortForward("success")
+			RecordPortForwardDuration(0.1)
+			RecordProxyConnection("success")
+			RecordDataTransfer("upload", int64(id*100))
+			done <- true
+		}(i)
+	}
+	
+	for i := 0; i < 10; i++ {
+		<-done
+	}
+}
+
+// TestNetworkMetricsEdgeCases 测试边界情况
+func TestNetworkMetricsEdgeCases(t *testing.T) {
+	// 测试零值
+	RecordPortForwardDuration(0)
+	RecordProxyConnectionDuration(0)
+	RecordDataTransfer("upload", 0)
+	
+	// 测试大值
+	RecordDataTransfer("download", 999999999)
+}

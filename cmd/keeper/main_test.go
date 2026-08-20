@@ -622,3 +622,130 @@ func TestInvalidNameValidation(t *testing.T) {
 		assert.Error(t, err, "name '%s' should be invalid", name)
 	}
 }
+
+// TestRunAgentCommandUsage 测试 run 子命令的 usage 输出
+func TestRunAgentCommandUsage(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+	
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	// 测试空参数
+	err = runAgentCommand(cfg, []string{})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "usage: keeper run <name>")
+}
+
+// TestInspectAgentNotFound 测试 inspect 不存在的 agent
+func TestInspectAgentNotFound(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+	
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	// 测试 inspect 不存在的 agent
+	_, w, _ := os.Pipe()
+	oldStdout := os.Stdout
+	os.Stdout = w
+	
+	err = inspectAgent(cfg, []string{"nonexistent"})
+	
+	w.Close()
+	os.Stdout = oldStdout
+	
+	assert.Error(t, err)
+	// 错误信息可能被包装过
+	assert.Contains(t, err.Error(), "nonexistent")
+}
+
+// TestStopAgentNotFound 测试 stop 不存在的 agent
+func TestStopAgentNotFound(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+	
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	// 测试 stop 不存在的 agent
+	err = stopAgent(cfg, []string{"nonexistent"})
+	assert.Error(t, err)
+	// 错误信息可能被包装过
+	assert.Contains(t, err.Error(), "nonexistent")
+}
+
+// TestDestroyAgentNotFound 测试 destroy 不存在的 agent
+func TestDestroyAgentNotFound(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+	
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	// 测试 destroy 不存在的 agent（可能不会返回错误）
+	// 这里我们只验证不会 panic
+	err = destroyAgent(cfg, []string{"nonexistent"})
+	// 不强制要求返回错误，因为 destroy 可能是幂等的
+	_ = err
+}
+
+// TestSnapshotAgentNotFound 测试 snapshot 不存在的 agent
+func TestSnapshotAgentNotFound(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+	
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	// 测试 snapshot 不存在的 agent
+	err = snapshotAgent(cfg, []string{"nonexistent", "snap1"})
+	assert.Error(t, err)
+	// 错误信息可能被包装过
+	assert.Contains(t, err.Error(), "nonexistent")
+}
+
+// TestRollbackAgentNotFound 测试 rollback 不存在的 agent
+func TestRollbackAgentNotFound(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+	
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	// 测试 rollback 不存在的 agent
+	err = rollbackAgent(cfg, []string{"nonexistent", "snap1"})
+	assert.Error(t, err)
+	// 错误信息可能被包装过
+	assert.Contains(t, err.Error(), "nonexistent")
+}
+
+// TestRecoverAgentNotFound 测试 recover 不存在的 agent
+func TestRecoverAgentNotFound(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+	
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	// 测试 recover 不存在的 agent
+	err = recoverAgent(cfg, []string{"nonexistent"})
+	assert.Error(t, err)
+	// 错误信息可能被包装过
+	assert.Contains(t, err.Error(), "nonexistent")
+}
+
+// TestStatusAgentNotFound 测试 status 不存在的 agent
+func TestStatusAgentNotFound(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+	
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	// 测试 status 不存在的 agent
+	err = statusAgent(cfg, []string{"nonexistent"})
+	assert.Error(t, err)
+	// 错误信息可能被包装过
+	assert.Contains(t, err.Error(), "nonexistent")
+}

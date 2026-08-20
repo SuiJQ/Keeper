@@ -93,3 +93,14 @@ func TestWatchdogMetricsConcurrent(t *testing.T) {
 		<-done
 	}
 }
+
+// TestWatchdogErrorMetrics 测试看门狗错误指标
+func TestWatchdogErrorMetrics(t *testing.T) {
+	RecordWatchdogStart("error")
+	RecordWatchdogStop("error")
+	RecordAgentRegister("error")
+	RecordAgentUnregister("error")
+	RecordAgentTimeout("test-agent")
+	RecordAgentDState("test-agent")
+	RecordAgentCheckDuration("test-agent", 0.5)
+}
