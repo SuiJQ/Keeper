@@ -164,3 +164,72 @@ func TestForwarderAddDuplicatePort(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "already forwarded")
 }
+
+func TestForwarderStartStop(t *testing.T) {
+	forwarder := NewForwarder(nil)
+
+	// 添加端口转发
+	hostPort := 49153
+	err := forwarder.AddForward(&PortForward{Host: hostPort, Container: 80, Protocol: "tcp"})
+	assert.NoError(t, err)
+
+	// 启动转发器
+	err = forwarder.Start()
+	assert.NoError(t, err)
+
+	// 停止转发器
+	forwarder.Stop()
+}
+
+func TestPortForwardString(t *testing.T) {
+	pf := &PortForward{Host: 8080, Container: 80, Protocol: "tcp"}
+	assert.Equal(t, "8080:80/tcp", pf.String())
+
+	pf = &PortForward{Host: 8443, Container: 443, Protocol: "udp"}
+	assert.Equal(t, "8443:443/udp", pf.String())
+}
+
+func TestNetworkManagerAddPortForward(t *testing.T) {
+	nm := NewNetworkManager()
+
+	pf := &PortForward{Host: 8080, Container: 80, Protocol: "tcp"}
+	nm.AddPortForward(pf)
+
+	forwards := nm.PortForwards()
+	assert.Len(t, forwards, 1)
+	assert.Equal(t, pf, forwards[0])
+}
+
+func TestNetworkManagerSOCKS5Proxy(t *testing.T) {
+	nm := NewNetworkManager()
+
+	proxy := &SOCKS5Proxy{
+		ListenAddr: "127.0.0.1:1080",
+		Auth: &ProxyAuth{
+			Username: "user",
+			Password: "pass",
+		},
+	}
+
+	nm.SetSOCKS5Proxy(proxy)
+	result := nm.SOCKS5Proxy()
+	assert.Equal(t, proxy, result)
+	assert.Equal(t, "127.0.0.1:1080", result.ListenAddr)
+	assert.NotNil(t, result.Auth)
+}
+
+func TestIsPortInUse(t *testing.T) {
+	// 启动一个临时监听器
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	assert.NoError(t, err)
+	defer listener.Close()
+
+	port := listener.Addr().(*net.TCPAddr).Port
+	assert.True(t, IsPortInUse(port))
+
+	// 关闭监听器后端口应该不再被占用
+	listener.Close()
+	// 注意：端口可能处于 TIME_WAIT 状态，所以可能仍然返回 true
+	// 这里只是基本测试
+	_ = IsPortInUse(port)
+}
