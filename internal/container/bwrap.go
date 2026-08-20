@@ -21,11 +21,13 @@ import (
 
 // BwrapContainer bwrap 容器运行时实现
 type BwrapContainer struct {
-	name   string
-	pid    int
-	cmd    *exec.Cmd
-	status ContainerStatus
-	logger log.Logger
+	name         string
+	pid          int
+	cmd          *exec.Cmd
+	status       ContainerStatus
+	logger       log.Logger
+	seccompStrat SeccompStrategy
+	overlayStrat OverlayStrategy
 }
 
 // BwrapFactory bwrap 容器运行时工厂
@@ -41,8 +43,10 @@ func (f *BwrapFactory) Create(name string) (Container, error) {
 	logger := log.Global().WithFields(log.Field{Key: "container", Value: name})
 	logger.Info("creating bwrap container")
 	return &BwrapContainer{
-		name:   name,
-		logger: logger,
+		name:         name,
+		logger:       logger,
+		seccompStrat: NewBPFGenerator(logger),
+		overlayStrat: NewOverlayBuilder(logger),
 		status: ContainerStatus{
 			State: "created",
 		},
@@ -315,15 +319,17 @@ func (c *BwrapContainer) buildArgs(spec ContainerSpec) ([]string, string) {
 	args = append(args, "--die-with-parent")
 	args = append(args, "--new-session")
 
-	// OverlayFS 设置
-	// lower 层（只读根文件系统）
-	args = append(args, "--ro-bind", spec.Rootfs, "/lower")
-	// upper 层（可写层）
-	args = append(args, "--bind", spec.UpperDir, "/upper")
-	// work 目录（必须与 upper 同设备）
-	args = append(args, "--bind", spec.WorkDir, "/work")
-	// overlay 挂载点
-	args = append(args, "--overlay", "/", "/lower:/upper:/work")
+	// OverlayFS 设置（使用策略接口）
+	if c.overlayStrat != nil {
+		overlayArgs := c.overlayStrat.BuildArgs(spec.Rootfs, spec.UpperDir, spec.WorkDir, "/")
+		args = append(args, overlayArgs...)
+	} else {
+		// 默认 OverlayFS 设置
+		args = append(args, "--ro-bind", spec.Rootfs, "/lower")
+		args = append(args, "--bind", spec.UpperDir, "/upper")
+		args = append(args, "--bind", spec.WorkDir, "/work")
+		args = append(args, "--overlay", "/", "/lower:/upper:/work")
+	}
 
 	// 共享内存
 	if spec.ShmSize > 0 {
@@ -349,7 +355,7 @@ func (c *BwrapContainer) buildArgs(spec ContainerSpec) ([]string, string) {
 		// bwrap 不支持原生端口映射，需要宿主机 socat/iptables 配合
 	}
 
-	// Seccomp BPF（简化实现：写入临时文件后通过 --seccomp 加载）
+	// Seccomp BPF（使用策略接口）
 	if len(spec.SeccompBPF) > 0 {
 		bpfFile = filepath.Join(os.TempDir(), fmt.Sprintf("seccomp-%d.bpf", os.Getpid()))
 		if err := writeSeccompBPF(bpfFile, spec.SeccompBPF); err == nil {
@@ -357,6 +363,17 @@ func (c *BwrapContainer) buildArgs(spec ContainerSpec) ([]string, string) {
 		} else {
 			// 写入失败，清空路径避免清理时误删
 			bpfFile = ""
+		}
+	} else if c.seccompStrat != nil {
+		// 使用策略生成默认 BPF
+		bpfData, err := c.seccompStrat.GenerateBPF()
+		if err == nil && len(bpfData) > 0 {
+			bpfFile = filepath.Join(os.TempDir(), fmt.Sprintf("seccomp-%d.bpf", os.Getpid()))
+			if err := os.WriteFile(bpfFile, bpfData, 0644); err == nil {
+				args = append(args, "--seccomp="+bpfFile)
+			} else {
+				bpfFile = ""
+			}
 		}
 	}
 

@@ -109,7 +109,15 @@ func TestBuildArgs(t *testing.T) {
 	assert.Contains(t, args, "/upper")
 	assert.Contains(t, args, "/work")
 	assert.Contains(t, args, "--overlay")
-	assert.Contains(t, args, "/lower:/upper:/work")
+	// 新格式：--overlay <mountpoint> --ro-bind <lower> <mountpoint> --bind <upper> <mountpoint> --bind <work> <work>
+	assert.Contains(t, args, "--overlay")
+	assert.Contains(t, args, "/")
+	assert.Contains(t, args, "--ro-bind")
+	assert.Contains(t, args, "/rootfs")
+	assert.Contains(t, args, "--bind")
+	assert.Contains(t, args, "/upper")
+	assert.Contains(t, args, "--bind")
+	assert.Contains(t, args, "/work")
 
 	// ShmSize
 	assert.Contains(t, args, "--shm-size=128m")
@@ -194,7 +202,15 @@ func TestBuildArgsMinimal(t *testing.T) {
 	assert.Contains(t, args, "/upper")
 	assert.Contains(t, args, "/work")
 	assert.Contains(t, args, "--overlay")
-	assert.Contains(t, args, "/lower:/upper:/work")
+	// 新格式：--overlay <mountpoint> --ro-bind <lower> <mountpoint> --bind <upper> <mountpoint> --bind <work> <work>
+	assert.Contains(t, args, "--overlay")
+	assert.Contains(t, args, "/")
+	assert.Contains(t, args, "--ro-bind")
+	assert.Contains(t, args, "/rootfs")
+	assert.Contains(t, args, "--bind")
+	assert.Contains(t, args, "/upper")
+	assert.Contains(t, args, "--bind")
+	assert.Contains(t, args, "/work")
 
 	// 默认命令
 	assert.Contains(t, args, "--")

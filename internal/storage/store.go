@@ -56,6 +56,8 @@ type AgentMeta struct {
 	MaxDownloadBytes int64         `json:"max_download_bytes"`
 	PID              int           `json:"pid,omitempty"`
 	PGID             string        `json:"pgid,omitempty"`
+	MCPPID           int           `json:"mcp_pid,omitempty"`
+	WatchdogPID      int           `json:"watchdog_pid,omitempty"`
 	DroppedLogs      int           `json:"dropped_logs"`
 	CacheURL         string        `json:"cache_url,omitempty"`
 	CacheKey         string        `json:"cache_key,omitempty"`

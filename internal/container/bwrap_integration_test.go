@@ -392,6 +392,89 @@ func TestBwrapContainerCloseNoRunner(t *testing.T) {
 	assert.Equal(t, "destroyed", c.status.State)
 }
 
+// TestBwrapContainerStartCheckDependenciesError 测试启动时依赖检查失败
+func TestBwrapContainerStartCheckDependenciesError(t *testing.T) {
+	c := &BwrapContainer{
+		name:   "test-container",
+		logger: &testLogger{},
+	}
+
+	// 在当前环境，Start 会因为内核或 bwrap 缺失而失败
+	ctx := context.Background()
+	spec := ContainerSpec{
+		Name:     "test-container",
+		Rootfs:   "/tmp/rootfs",
+		UpperDir: "/tmp/upper",
+		WorkDir:  "/tmp/work",
+	}
+
+	_, err := c.Start(ctx, spec)
+	// 期望返回错误（当前环境内核 5.10 不支持 CONFIG_OVERLAY_FS_USERNS）
+	assert.Error(t, err)
+	if err != nil {
+		msg := err.Error()
+		assert.True(t,
+			strings.Contains(msg, "bwrap") || strings.Contains(msg, "kernel"),
+			"error should mention bwrap or kernel support: %s", msg)
+	}
+}
+
+// TestBwrapContainerStopNotRunning 测试停止未运行的容器
+func TestBwrapContainerStopNotRunning(t *testing.T) {
+	c := &BwrapContainer{
+		name:   "test-container",
+		status: ContainerStatus{State: "created"},
+		logger: &testLogger{},
+	}
+
+	// 未运行的容器 Stop 应该成功（静默返回）
+	ctx := context.Background()
+	err := c.Stop(ctx, 5*time.Second)
+	require.NoError(t, err)
+	assert.Equal(t, "created", c.status.State) // 状态不应改变
+}
+
+// TestBwrapContainerExecNotRunning 测试在未运行的容器中执行命令
+func TestBwrapContainerExecNotRunning(t *testing.T) {
+	c := &BwrapContainer{
+		name:   "test-container",
+		status: ContainerStatus{State: "created"},
+		logger: &testLogger{},
+	}
+
+	ctx := context.Background()
+	req := ExecRequest{
+		Command: "echo hello",
+		Timeout: 30 * time.Second,
+	}
+
+	resp, err := c.Exec(ctx, req)
+	assert.Error(t, err)
+	assert.Nil(t, resp)
+	assert.Contains(t, err.Error(), "container not running")
+}
+
+// TestBwrapContainerStatusRunning 测试运行中容器的状态
+func TestBwrapContainerStatusRunning(t *testing.T) {
+	// 模拟一个正在运行的容器
+	c := &BwrapContainer{
+		name: "test-container",
+		status: ContainerStatus{
+			State:  "running",
+			PID:    12345,
+			PGID:   12345,
+			Uptime: 10 * time.Second,
+		},
+		logger: &testLogger{},
+	}
+
+	ctx := context.Background()
+	status, err := c.Status(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "running", status.State)
+	assert.Equal(t, 12345, status.PID)
+}
+
 // testLogger 测试用日志记录器
 type testLogger struct{}
 
