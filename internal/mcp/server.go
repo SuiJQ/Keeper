@@ -444,11 +444,10 @@ func (s *Server) executeTool(ctx context.Context, name string, args map[string]i
 		return "", fmt.Errorf("map tool: %w", err)
 	}
 
-	// 构建 keeper 二进制路径
-	keeperBin := filepath.Join("/tmp", "keeper-mcp-bin", "keeper")
-	if _, err := os.Stat(keeperBin); err != nil {
-		// fallback：尝试当前目录的 bin/keeper
-		keeperBin = filepath.Join(".", "bin", "keeper")
+	// 查找 keeper 二进制文件
+	keeperBin, err := findKeeperBinary()
+	if err != nil {
+		return "", fmt.Errorf("find keeper binary: %w", err)
 	}
 
 	// 构建命令参数
@@ -459,7 +458,6 @@ func (s *Server) executeTool(ctx context.Context, name string, args map[string]i
 		log.Field{Key: "args", Value: cmdArgs})
 
 	cmd := exec.CommandContext(ctx, keeperBin, cmdArgs...)
-	cmd.Dir = "/run/csi/mount-root/nas/4079184d856ecc166ed19d4887083405/workspaces/QwenPaw_QA_Agent_0.2/mirage"
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -467,6 +465,30 @@ func (s *Server) executeTool(ctx context.Context, name string, args map[string]i
 	}
 
 	return string(output), nil
+}
+
+// findKeeperBinary 查找 keeper 二进制文件
+func findKeeperBinary() (string, error) {
+	// 1. 检查 PATH
+	if path, err := exec.LookPath("keeper"); err == nil {
+		return path, nil
+	}
+
+	// 2. 检查常见位置
+	candidates := []string{
+		filepath.Join("/usr/local/bin", "keeper"),
+		filepath.Join("/usr/bin", "keeper"),
+		filepath.Join(os.Getenv("HOME"), ".local", "bin", "keeper"),
+		filepath.Join(".", "bin", "keeper"),
+	}
+
+	for _, candidate := range candidates {
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate, nil
+		}
+	}
+
+	return "", fmt.Errorf("keeper binary not found in PATH or common locations")
 }
 
 // mapMCPToKeeper 将 MCP 工具调用映射为 keeper CLI 参数
