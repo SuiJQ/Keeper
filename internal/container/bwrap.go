@@ -1,6 +1,7 @@
 package container
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"fmt"
@@ -323,7 +324,7 @@ type processStatus struct {
 }
 
 func readProcessStatus(pid int) (*processStatus, error) {
-	// 简化实现：从 /proc/<pid>/stat 读取进程启动时间
+	// 从 /proc/<pid>/stat 读取进程启动时间
 	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
 	if err != nil {
 		return nil, err
@@ -336,10 +337,55 @@ func readProcessStatus(pid int) (*processStatus, error) {
 		return nil, fmt.Errorf("invalid stat format")
 	}
 
-	_, _ = strconv.ParseInt(parts[21], 10, 64)
+	starttime, err := strconv.ParseInt(parts[21], 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("parse starttime: %w", err)
+	}
 
-	// 简化处理：返回 0  uptime
-	return &processStatus{Uptime: 0}, nil
+	// 读取系统启动时间（/proc/stat 中的 btime）
+	btime, err := readSystemBootTime()
+	if err != nil {
+		return nil, fmt.Errorf("read boot time: %w", err)
+	}
+
+	// 读取时钟频率（默认 100 Hz）
+	clkTick := int64(100)
+
+	// 计算进程启动时间（秒）
+	processStart := btime + starttime/clkTick
+
+	// 计算 uptime
+	now := time.Now().Unix()
+	uptime := now - processStart
+	if uptime < 0 {
+		uptime = 0
+	}
+
+	return &processStatus{Uptime: time.Duration(uptime) * time.Second}, nil
+}
+
+// readSystemBootTime 读取系统启动时间
+func readSystemBootTime() (int64, error) {
+	data, err := os.ReadFile("/proc/stat")
+	if err != nil {
+		return 0, err
+	}
+
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "btime ") {
+			parts := strings.Fields(line)
+			if len(parts) >= 2 {
+				btime, err := strconv.ParseInt(parts[1], 10, 64)
+				if err != nil {
+					return 0, err
+				}
+				return btime, nil
+			}
+		}
+	}
+	return 0, fmt.Errorf("btime not found in /proc/stat")
 }
 
 func writeSeccompBPF(filename string, bpf []byte) error {
