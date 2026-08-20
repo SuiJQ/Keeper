@@ -64,6 +64,7 @@ func (w *Watchdog) Start(ctx context.Context) error {
 	defer w.mu.Unlock()
 
 	if w.running {
+		RecordWatchdogStart("error")
 		return fmt.Errorf("watchdog already running")
 	}
 
@@ -74,6 +75,8 @@ func (w *Watchdog) Start(ctx context.Context) error {
 	w.logger.Info("watchdog started",
 		log.Field{Key: "timeout", Value: w.timeout},
 		log.Field{Key: "check_interval", Value: w.checkInterval})
+
+	RecordWatchdogStart("success")
 
 	go w.monitorLoop(ctx)
 
@@ -94,6 +97,8 @@ func (w *Watchdog) Stop() {
 	}
 	w.running = false
 	w.logger.Info("watchdog stopped")
+
+	RecordWatchdogStop("success")
 }
 
 // RegisterAgent 注册 agent 到看门狗
@@ -110,6 +115,9 @@ func (w *Watchdog) RegisterAgent(name string, pid int) {
 	w.logger.Info("agent registered with watchdog",
 		log.Field{Key: "agent", Value: name},
 		log.Field{Key: "pid", Value: pid})
+
+	RecordAgentRegister("success")
+	SetActiveAgents(float64(len(w.agents)))
 }
 
 // UnregisterAgent 从看门狗注销 agent
@@ -119,6 +127,9 @@ func (w *Watchdog) UnregisterAgent(name string) {
 
 	delete(w.agents, name)
 	w.logger.Info("agent unregistered from watchdog", log.Field{Key: "agent", Value: name})
+
+	RecordAgentUnregister("success")
+	SetActiveAgents(float64(len(w.agents)))
 }
 
 // monitorLoop 监控循环
@@ -152,6 +163,8 @@ func (w *Watchdog) checkAgents() {
 
 // checkAgent 检查单个 agent 状态
 func (w *Watchdog) checkAgent(info *AgentInfo) {
+	startTime := time.Now()
+
 	// 检查进程是否还存在
 	if !isProcessAlive(info.PID) {
 		w.logger.Warn("agent process not found",
@@ -178,6 +191,7 @@ func (w *Watchdog) checkAgent(info *AgentInfo) {
 		}
 
 		w.UnregisterAgent(info.Name)
+		RecordAgentTimeout(info.Name)
 		return
 	}
 
@@ -194,7 +208,11 @@ func (w *Watchdog) checkAgent(info *AgentInfo) {
 		}
 
 		w.UnregisterAgent(info.Name)
+		RecordAgentDState(info.Name)
+		return
 	}
+
+	RecordAgentCheckDuration(info.Name, time.Since(startTime).Seconds())
 }
 
 // isProcessAlive 检查进程是否存活

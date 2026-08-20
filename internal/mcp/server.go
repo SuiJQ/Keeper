@@ -93,12 +93,14 @@ func (s *Server) Start(ctx context.Context) error {
 	defer s.mu.Unlock()
 
 	if s.running {
+		RecordMCPConnection("error")
 		return fmt.Errorf("MCP server already running")
 	}
 
 	// 创建 Unix socket
 	listener, err := net.Listen("unix", s.socketPath)
 	if err != nil {
+		RecordMCPConnection("error")
 		return fmt.Errorf("create socket listener: %w", err)
 	}
 	s.listener = listener
@@ -107,10 +109,13 @@ func (s *Server) Start(ctx context.Context) error {
 	// 设置 socket 权限为 0600（仅属主可访问）
 	if err := os.Chmod(s.socketPath, 0600); err != nil {
 		s.Stop()
+		RecordMCPConnection("error")
 		return fmt.Errorf("set socket permissions: %w", err)
 	}
 
 	s.logger.Info("MCP server started", log.Field{Key: "socket", Value: s.socketPath})
+
+	RecordMCPConnection("success")
 
 	go s.acceptLoop(ctx)
 
@@ -142,6 +147,9 @@ func (s *Server) Stop() error {
 	}
 
 	s.logger.Info("MCP server stopped")
+
+	RecordMCPConnection("stopped")
+
 	return nil
 }
 
@@ -172,6 +180,7 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 	cred, err := getPeerCredentials(conn)
 	if err != nil {
 		s.logger.Error("failed to get peer credentials", log.Field{Key: "error", Value: err.Error()})
+		RecordMCPConnection("auth_error")
 		return
 	}
 
@@ -184,8 +193,11 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 	// 可配置的 UID/GID 白名单校验
 	if err := s.authorize(cred); err != nil {
 		s.logger.Warn("rejecting connection", log.Field{Key: "uid", Value: cred.Uid}, log.Field{Key: "gid", Value: cred.Gid}, log.Field{Key: "error", Value: err.Error()})
+		RecordMCPConnection("auth_error")
 		return
 	}
+
+	RecordMCPConnection("accepted")
 
 	decoder := json.NewDecoder(conn)
 	encoder := json.NewEncoder(conn)
@@ -428,13 +440,21 @@ func (s *Server) handleToolCall(ctx context.Context, req Request) Response {
 		arguments = make(map[string]interface{})
 	}
 
+	startTime := time.Now()
 	result, err := s.executeTool(ctx, toolName, arguments)
+	duration := time.Since(startTime).Seconds()
+
 	if err != nil {
+		RecordMCPToolCall(toolName, "error")
+		RecordMCPToolCallDuration(toolName, duration)
 		return Response{
 			ID:    req.ID,
 			Error: &Error{Code: -32603, Message: err.Error()},
 		}
 	}
+
+	RecordMCPToolCall(toolName, "success")
+	RecordMCPToolCallDuration(toolName, duration)
 
 	return Response{
 		ID: req.ID,

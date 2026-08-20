@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -12,7 +13,9 @@ import (
 
 	"keeper/internal/container"
 	"keeper/internal/log"
+	"keeper/internal/mcp"
 	"keeper/internal/storage"
+	"keeper/internal/watchdog"
 	"keeper/pkg/config"
 )
 
@@ -62,6 +65,8 @@ func run() error {
 		return startAgent(cfg, args)
 	case "stop":
 		return stopAgent(cfg, args)
+	case "run":
+		return runAgentCommand(cfg, args)
 	case "status":
 		return statusAgent(cfg, args)
 	case "list":
@@ -254,6 +259,137 @@ func stopAgent(cfg *config.Config, args []string) error {
 	}
 
 	logger.Info("agent stopped", log.Field{Key: "state", Value: meta.State})
+	fmt.Printf("Agent '%s' stopped\n", name)
+	return nil
+}
+
+// runAgentCommand 运行 Agent（前台模式，启动容器 + MCP + Watchdog）
+func runAgentCommand(cfg *config.Config, args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: keeper run <name>")
+	}
+
+	name := args[0]
+	logger := globalLogger.WithFields(log.Field{Key: "agent_name", Value: name})
+	logger.Info("running agent")
+
+	store, err := storage.NewStore(cfg.Home)
+	if err != nil {
+		return fmt.Errorf("create store: %w", err)
+	}
+
+	// 加载 agent 元数据
+	meta, err := store.GetAgent(context.Background(), name)
+	if err != nil {
+		return fmt.Errorf("load agent: %w", err)
+	}
+
+	// 如果 Agent 不存在，自动创建
+	if meta == nil {
+		logger.Info("agent does not exist, creating")
+		if err := createAgent(cfg, []string{name}); err != nil {
+			return fmt.Errorf("create agent: %w", err)
+		}
+		meta, err = store.GetAgent(context.Background(), name)
+		if err != nil {
+			return fmt.Errorf("load agent after create: %w", err)
+		}
+	}
+
+	// 如果 Agent 已停止，先启动
+	if meta.State == "stopped" {
+		logger.Info("agent is stopped, starting")
+		if err := startAgent(cfg, []string{name}); err != nil {
+			return fmt.Errorf("start agent: %w", err)
+		}
+		meta, err = store.GetAgent(context.Background(), name)
+		if err != nil {
+			return fmt.Errorf("load agent after start: %w", err)
+		}
+	}
+
+	// 如果 Agent 已在运行，直接进入监控模式
+	if meta.State == "running" {
+		logger.Info("agent is already running, entering monitor mode")
+	} else {
+		return fmt.Errorf("cannot run agent in state: %s", meta.State)
+	}
+
+	// 创建容器运行时
+	factory := container.NewBwrapFactory()
+	c, err := factory.Create(name)
+	if err != nil {
+		return fmt.Errorf("create container: %w", err)
+	}
+	defer c.Close()
+
+	// 启动 MCP Server（使用配置中的授权设置）
+	mcpServer, err := mcp.NewServer(mcp.ServerConfig{
+		SocketPath:  filepath.Join(cfg.Home, "agents", name, "mcp.sock"),
+		AgentName:   name,
+		AllowedUIDs: cfg.MCPAllowedUIDs,
+		AllowedGIDs: cfg.MCPAllowedGIDs,
+	}, logger)
+	if err != nil {
+		return fmt.Errorf("create mcp server: %w", err)
+	}
+
+	// 启动看门狗（使用配置中的超时设置）
+	watchdogTimeout, err := cfg.WatchdogTimeoutDuration()
+	if err != nil {
+		return fmt.Errorf("parse watchdog timeout: %w", err)
+	}
+	watchdogInterval, err := cfg.WatchdogCheckIntervalDuration()
+	if err != nil {
+		return fmt.Errorf("parse watchdog check interval: %w", err)
+	}
+
+	wd := watchdog.NewWatchdog(watchdog.WatchdogConfig{
+		Timeout:       watchdogTimeout,
+		CheckInterval: watchdogInterval,
+	}, logger)
+
+	// 注册 Agent 到看门狗
+	wd.RegisterAgent(name, meta.PID)
+
+	// 启动服务
+	ctx := context.Background()
+	if err := mcpServer.Start(ctx); err != nil {
+		return fmt.Errorf("start mcp server: %w", err)
+	}
+	defer mcpServer.Stop()
+
+	if err := wd.Start(ctx); err != nil {
+		return fmt.Errorf("start watchdog: %w", err)
+	}
+	defer wd.Stop()
+
+	logger.Info("agent running (MCP + Watchdog active)")
+	fmt.Printf("Agent '%s' is running (pid: %d)\n", name, meta.PID)
+	fmt.Println("Press Ctrl+C to stop")
+
+	// 等待信号
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	<-sigCh
+
+	logger.Info("received stop signal, shutting down")
+	fmt.Println("\nShutting down...")
+
+	// 停止看门狗
+	wd.Stop()
+
+	// 停止 MCP Server
+	if err := mcpServer.Stop(); err != nil {
+		logger.Warn("stop mcp server error", log.Field{Key: "error", Value: err})
+	}
+
+	// 停止容器
+	if err := stopAgent(cfg, []string{name}); err != nil {
+		logger.Warn("stop agent error", log.Field{Key: "error", Value: err})
+	}
+
+	logger.Info("agent stopped")
 	fmt.Printf("Agent '%s' stopped\n", name)
 	return nil
 }
