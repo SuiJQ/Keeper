@@ -785,16 +785,16 @@ func TestHelpCommand(t *testing.T) {
 	r, w, _ := os.Pipe()
 	oldStdout := os.Stdout
 	os.Stdout = w
-	
+
 	printUsage()
-	
+
 	w.Close()
 	os.Stdout = oldStdout
-	
+
 	var buf bytes.Buffer
 	buf.ReadFrom(r)
 	output := buf.String()
-	
+
 	assert.Contains(t, output, "keeper")
 	assert.Contains(t, output, "create")
 	assert.Contains(t, output, "start")
@@ -804,7 +804,7 @@ func TestHelpCommand(t *testing.T) {
 func TestListAgentsEmpty(t *testing.T) {
 	tmpDir, cleanup := setupTestConfig(t)
 	defer cleanup()
-	
+
 	cfg, err := config.Load(tmpDir)
 	require.NoError(t, err)
 
@@ -817,17 +817,17 @@ func TestListAgentsEmpty(t *testing.T) {
 func TestInvalidAgentName(t *testing.T) {
 	tmpDir, cleanup := setupTestConfig(t)
 	defer cleanup()
-	
+
 	cfg, err := config.Load(tmpDir)
 	require.NoError(t, err)
 
 	// 测试各种无效名称
 	invalidNames := []string{
-		"",           // 空名称
-		"agent@name", // 包含特殊字符
-		"agent name", // 包含空格
-		"agent/name", // 包含斜杠
-		"agent:name", // 包含冒号
+		"",                      // 空名称
+		"agent@name",            // 包含特殊字符
+		"agent name",            // 包含空格
+		"agent/name",            // 包含斜杠
+		"agent:name",            // 包含冒号
 		strings.Repeat("a", 33), // 太长（>32）
 	}
 
@@ -841,7 +841,7 @@ func TestInvalidAgentName(t *testing.T) {
 func TestValidAgentName(t *testing.T) {
 	tmpDir, cleanup := setupTestConfig(t)
 	defer cleanup()
-	
+
 	cfg, err := config.Load(tmpDir)
 	require.NoError(t, err)
 
@@ -858,7 +858,7 @@ func TestValidAgentName(t *testing.T) {
 	for _, name := range validNames {
 		err := createAgent(cfg, []string{name})
 		assert.NoError(t, err, "name %q should be valid", name)
-		
+
 		// 清理
 		_ = destroyAgent(cfg, []string{name})
 	}
@@ -868,7 +868,7 @@ func TestValidAgentName(t *testing.T) {
 func TestCreateAgentDuplicate(t *testing.T) {
 	tmpDir, cleanup := setupTestConfig(t)
 	defer cleanup()
-	
+
 	cfg, err := config.Load(tmpDir)
 	require.NoError(t, err)
 
@@ -891,7 +891,7 @@ func TestCreateAgentDuplicate(t *testing.T) {
 func TestDestroyAgentTwice(t *testing.T) {
 	tmpDir, cleanup := setupTestConfig(t)
 	defer cleanup()
-	
+
 	cfg, err := config.Load(tmpDir)
 	require.NoError(t, err)
 
@@ -915,7 +915,7 @@ func TestDestroyAgentTwice(t *testing.T) {
 func TestSnapshotRollbackWithoutSnapshot(t *testing.T) {
 	tmpDir, cleanup := setupTestConfig(t)
 	defer cleanup()
-	
+
 	cfg, err := config.Load(tmpDir)
 	require.NoError(t, err)
 
@@ -937,7 +937,7 @@ func TestSnapshotRollbackWithoutSnapshot(t *testing.T) {
 func TestListSnapshotsEmpty(t *testing.T) {
 	tmpDir, cleanup := setupTestConfig(t)
 	defer cleanup()
-	
+
 	cfg, err := config.Load(tmpDir)
 	require.NoError(t, err)
 

@@ -702,6 +702,7 @@ func (s *CustomLogStrategy) Name() string { return "custom" }
 func (s *CustomLogStrategy) Configure(spec ContainerSpec) ([]string, error) {
 	return []string{"--log-level=" + s.level}, nil
 }
+
 type testLogger struct{}
 
 func (l *testLogger) Debug(msg string, fields ...log.Field)     {}

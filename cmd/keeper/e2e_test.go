@@ -587,5 +587,3 @@ func TestAgentRunEndToEnd(t *testing.T) {
 	err = destroyAgent(cfg, []string{agentName})
 	require.NoError(t, err)
 }
-
-
