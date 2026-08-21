@@ -316,3 +316,31 @@ func BenchmarkGenerateBPFBlacklist(b *testing.B) {
 		}
 	}
 }
+
+// TestNewWhitelistFilter 测试创建白名单过滤器
+func TestNewWhitelistFilter(t *testing.T) {
+	filter := NewWhitelistFilter()
+	require.NotNil(t, filter)
+	assert.NotEmpty(t, filter.AllowList)
+	assert.Equal(t, RetErrno, filter.DefaultAction) // 白名单默认返回 Errno
+	
+	// 验证包含常用系统调用
+	assert.Contains(t, filter.AllowList, "read")
+	assert.Contains(t, filter.AllowList, "write")
+	assert.Contains(t, filter.AllowList, "open")
+	assert.Contains(t, filter.AllowList, "close")
+}
+
+// TestNewBlacklistFilter 测试创建黑名单过滤器
+func TestNewBlacklistFilter(t *testing.T) {
+	filter := NewBlacklistFilter()
+	require.NotNil(t, filter)
+	assert.NotEmpty(t, filter.DenyList)
+	assert.Equal(t, RetAllow, filter.DefaultAction)
+	
+	// 验证包含危险系统调用
+	assert.Contains(t, filter.DenyList, "reboot")
+	assert.Contains(t, filter.DenyList, "mount")
+	assert.Contains(t, filter.DenyList, "umount")
+	assert.Contains(t, filter.DenyList, "kexec_load")
+}

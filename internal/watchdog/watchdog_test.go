@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"os/exec"
+	"syscall"
 	"testing"
 	"time"
 
@@ -195,4 +196,88 @@ func TestIsProcessAlive(t *testing.T) {
 	assert.False(t, isProcessAlive(-1))
 	assert.False(t, isProcessAlive(0))
 	assert.False(t, isProcessAlive(999999))
+}
+
+// TestWatchdogUpdateTimeout 测试更新看门狗超时
+func TestWatchdogUpdateTimeout(t *testing.T) {
+	wd := NewWatchdog(WatchdogConfig{
+		Timeout:       1 * time.Minute,
+		CheckInterval: 10 * time.Second,
+	}, log.Global())
+	
+	// 更新超时时间
+	wd.UpdateTimeout(2 * time.Minute)
+	
+	// 验证超时时间已更新
+	// 注意：timeout 字段是私有的，我们通过日志或行为验证
+	// 这里只是验证不会 panic
+}
+
+// TestWatchdogUpdateCheckInterval 测试更新看门狗检查间隔
+func TestWatchdogUpdateCheckInterval(t *testing.T) {
+	wd := NewWatchdog(WatchdogConfig{
+		Timeout:       1 * time.Minute,
+		CheckInterval: 10 * time.Second,
+	}, log.Global())
+	
+	// 更新检查间隔
+	wd.UpdateCheckInterval(5 * time.Second)
+	
+	// 验证检查间隔已更新
+	// 这里只是验证不会 panic
+}
+
+// TestAgentInfoSignalProcess 测试向进程发送信号
+func TestAgentInfoSignalProcess(t *testing.T) {
+	// 创建一个子进程
+	cmd := exec.Command("sleep", "10")
+	err := cmd.Start()
+	require.NoError(t, err)
+	defer cmd.Process.Kill()
+	
+	agent := &AgentInfo{
+		Name: "test",
+		PID:  cmd.Process.Pid,
+	}
+	
+	// 发送 SIGTERM 信号
+	err = agent.signalProcess(syscall.SIGTERM)
+	assert.NoError(t, err)
+	
+	// 等待进程结束
+	_, err = cmd.Process.Wait()
+	assert.NoError(t, err)
+}
+
+// TestAgentInfoSignalProcessInvalidPID 测试无效 PID
+func TestAgentInfoSignalProcessInvalidPID(t *testing.T) {
+	agent := &AgentInfo{
+		Name: "test",
+		PID:  -1,
+	}
+	
+	err := agent.signalProcess(syscall.SIGTERM)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid pid")
+}
+
+// TestWatchdogConcurrentUpdate 测试并发更新
+func TestWatchdogConcurrentUpdate(t *testing.T) {
+	wd := NewWatchdog(WatchdogConfig{
+		Timeout:       1 * time.Minute,
+		CheckInterval: 10 * time.Second,
+	}, log.Global())
+	
+	done := make(chan bool, 10)
+	for i := 0; i < 10; i++ {
+		go func(id int) {
+			wd.UpdateTimeout(time.Duration(id+1) * time.Minute)
+			wd.UpdateCheckInterval(time.Duration(id+1) * time.Second)
+			done <- true
+		}(i)
+	}
+	
+	for i := 0; i < 10; i++ {
+		<-done
+	}
 }
