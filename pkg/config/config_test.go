@@ -281,3 +281,53 @@ func TestConfigReloadPartialUpdate(t *testing.T) {
 	assert.Equal(t, "debug", loaded.LogLevel)
 	assert.Equal(t, 64, loaded.DefaultShmSizeMB, "unmodified field should retain default value")
 }
+
+// TestConfigReloadSnapshotCompressionLevel 测试快照压缩级别热加载
+func TestConfigReloadSnapshotCompressionLevel(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := DefaultConfig()
+	cfg.Home = tmpDir
+	cfg.SnapshotCompressionLevel = 6
+	require.NoError(t, cfg.Save())
+
+	// 初次加载
+	loaded, err := Load(tmpDir)
+	require.NoError(t, err)
+	assert.Equal(t, 6, loaded.SnapshotCompressionLevel)
+
+	// 修改快照压缩级别
+	configFile := filepath.Join(tmpDir, "config.json")
+	newData := []byte(`{"snapshot_compression_level": 1}`)
+	require.NoError(t, os.WriteFile(configFile, newData, 0644))
+	waitForFileChange(t, configFile, loaded.modTime)
+	require.NoError(t, loaded.ReloadIfChanged())
+
+	// 验证：快照压缩级别已更新
+	assert.Equal(t, 1, loaded.SnapshotCompressionLevel)
+}
+
+// TestConfigValidateSnapshotCompressionLevel 测试快照压缩级别验证
+func TestConfigValidateSnapshotCompressionLevel(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Home = t.TempDir()
+
+	// 有效值
+	cfg.SnapshotCompressionLevel = 1
+	assert.NoError(t, cfg.Validate())
+
+	cfg.SnapshotCompressionLevel = 9
+	assert.NoError(t, cfg.Validate())
+
+	cfg.SnapshotCompressionLevel = 6
+	assert.NoError(t, cfg.Validate())
+
+	// 无效值
+	cfg.SnapshotCompressionLevel = 0
+	assert.Error(t, cfg.Validate())
+
+	cfg.SnapshotCompressionLevel = 10
+	assert.Error(t, cfg.Validate())
+
+	cfg.SnapshotCompressionLevel = -1
+	assert.Error(t, cfg.Validate())
+}

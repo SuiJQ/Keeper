@@ -210,6 +210,7 @@ func (c *Config) ReloadIfChanged() error {
 	c.MCPAllowedGIDs = newCfg.MCPAllowedGIDs
 	c.SeccompStrategy = newCfg.SeccompStrategy
 	c.OverlayStrategy = newCfg.OverlayStrategy
+	c.SnapshotCompressionLevel = newCfg.SnapshotCompressionLevel
 	c.modTime = info.ModTime()
 
 	// 触发回调
