@@ -553,4 +553,39 @@ func TestAgentStatusEndToEnd(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// TestAgentRunEndToEnd 测试 run 命令端到端
+func TestAgentRunEndToEnd(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	agentName := "run-agent"
+
+	// 1. 创建 Agent
+	err = createAgent(cfg, []string{agentName})
+	require.NoError(t, err)
+
+	// 2. 启动 Agent（可能失败，忽略）
+	_ = startAgent(cfg, []string{agentName})
+
+	// 3. 检查 Agent 状态
+	store, err := storage.NewStore(cfg.Home)
+	require.NoError(t, err)
+	meta, err := store.GetAgent(context.Background(), agentName)
+	require.NoError(t, err)
+
+	// 如果 Agent 处于 running 状态，run 应该返回错误
+	if meta.State == "running" {
+		err = runAgentCommand(cfg, []string{agentName})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "cannot run agent in state: running")
+	}
+
+	// 4. 销毁 Agent
+	err = destroyAgent(cfg, []string{agentName})
+	require.NoError(t, err)
+}
+
 
