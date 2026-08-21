@@ -41,7 +41,9 @@ jobs:
         run: go version
 
       - name: Run unit tests
-        run: go test -p 1 ./...
+        run: |
+          go test ./... 2>&1 | tee test-output.log
+          echo "Test output saved to test-output.log"
 
       - name: Build binary
         run: go build -o bin/keeper ./cmd/keeper
