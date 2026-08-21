@@ -2,6 +2,8 @@ package metrics
 
 import (
 	"context"
+	"fmt"
+	"net/http"
 	"testing"
 	"time"
 
@@ -76,6 +78,48 @@ func TestStartMetricsServer(t *testing.T) {
 	// 验证服务器运行
 	server := GetHTTPServer()
 	assert.True(t, server.IsRunning())
+
+	// 清理
+	ctx, cancel = context.WithTimeout(context.Background(), 2*time.Second)
+	StopMetricsServer(ctx)
+	cancel()
+}
+
+// TestMetricsEndpoint 测试 /metrics 端点返回有效数据
+func TestMetricsEndpoint(t *testing.T) {
+	// 先停止可能存在的全局服务器
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	StopMetricsServer(ctx)
+	cancel()
+
+	// 注册一些测试指标
+	testCounter := RegisterCounter("test_counter_total", "Test counter", []string{"label1"})
+	testCounter.Inc("value1")
+	testGauge := RegisterGauge("test_gauge", "Test gauge", []string{"label2"})
+	testGauge.Set(42, "value2")
+
+	// 启动服务器
+	err := StartMetricsServer()
+	require.NoError(t, err)
+	server := GetHTTPServer()
+	assert.True(t, server.IsRunning())
+
+	// 获取实际监听地址
+	addr := server.Addr()
+	require.NotEmpty(t, addr)
+
+	// 等待服务器就绪
+	time.Sleep(100 * time.Millisecond)
+
+	// 创建 HTTP 客户端
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Get(fmt.Sprintf("http://%s/metrics", addr))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	// 验证响应状态
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, "text/plain; version=0.0.4", resp.Header.Get("Content-Type"))
 
 	// 清理
 	ctx, cancel = context.WithTimeout(context.Background(), 2*time.Second)
