@@ -38,7 +38,7 @@ type Store interface {
 	ForkAgent(ctx context.Context, source, target string) (*AgentMeta, error)
 
 	// CreateSnapshot 创建快照
-	CreateSnapshot(ctx context.Context, name, snapshotID string) error
+	CreateSnapshot(ctx context.Context, name, snapshotID string, compressionLevel int) error
 
 	// RollbackSnapshot 回滚快照
 	RollbackSnapshot(ctx context.Context, name, snapshotID string) error
@@ -341,7 +341,7 @@ func (s *fileStore) ForkAgent(ctx context.Context, source, target string) (*Agen
 }
 
 // CreateSnapshot 创建快照（支持压缩与增量）
-func (s *fileStore) CreateSnapshot(ctx context.Context, name, snapshotID string) error {
+func (s *fileStore) CreateSnapshot(ctx context.Context, name, snapshotID string, compressionLevel int) error {
 	startTime := time.Now()
 	agentPath := s.agentDir(name)
 	backupsDir := filepath.Join(agentPath, "backups", snapshotID)
@@ -361,7 +361,7 @@ func (s *fileStore) CreateSnapshot(ctx context.Context, name, snapshotID string)
 	// 压缩复制 upper
 	upperPath := filepath.Join(agentPath, "upper")
 	upperDst := filepath.Join(backupsDir, "upper.tar.gz")
-	upperSize, files, err := compressCopy(upperPath, upperDst)
+	upperSize, files, err := compressCopy(upperPath, upperDst, compressionLevel)
 	if err != nil {
 		_ = os.RemoveAll(backupsDir)
 		RecordSnapshotCreate("error")
@@ -371,7 +371,7 @@ func (s *fileStore) CreateSnapshot(ctx context.Context, name, snapshotID string)
 	// 压缩复制 workspace
 	workspacePath := filepath.Join(agentPath, "workspace")
 	workspaceDst := filepath.Join(backupsDir, "workspace.tar.gz")
-	workspaceSize, _, err := compressCopy(workspacePath, workspaceDst)
+	workspaceSize, _, err := compressCopy(workspacePath, workspaceDst, compressionLevel)
 	if err != nil {
 		_ = os.RemoveAll(backupsDir)
 		RecordSnapshotCreate("error")
@@ -758,7 +758,8 @@ func recreateWorkDir(workDir string) error {
 }
 
 // compressCopy 压缩复制目录到 tar.gz
-func compressCopy(src, dst string) (int64, int, error) {
+// compressCopy 压缩复制目录到 tar.gz 文件
+func compressCopy(src, dst string, compressionLevel int) (int64, int, error) {
 	if err := os.MkdirAll(filepath.Dir(dst), 0700); err != nil {
 		return 0, 0, err
 	}
@@ -769,7 +770,10 @@ func compressCopy(src, dst string) (int64, int, error) {
 	}
 	defer f.Close()
 
-	gw := gzip.NewWriter(f)
+	gw, err := gzip.NewWriterLevel(f, compressionLevel)
+	if err != nil {
+		return 0, 0, err
+	}
 	defer gw.Close()
 
 	tw := tar.NewWriter(gw)

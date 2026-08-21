@@ -57,6 +57,9 @@ type Config struct {
 	// OverlayStrategy OverlayFS 挂载策略（default/overlayfs）
 	OverlayStrategy string `json:"overlay_strategy"`
 
+	// SnapshotCompressionLevel 快照压缩级别（1-9，1 最快，9 最佳压缩）
+	SnapshotCompressionLevel int `json:"snapshot_compression_level"`
+
 	// file 配置文件路径（不序列化）
 	file string
 
@@ -84,6 +87,7 @@ func DefaultConfig() *Config {
 		MCPAllowedGIDs:          []uint32{},
 		SeccompStrategy:         "default",
 		OverlayStrategy:         "default",
+		SnapshotCompressionLevel: 6, // 平衡速度和压缩率
 	}
 }
 
@@ -265,6 +269,10 @@ func (c *Config) Validate() error {
 
 	if !validLevels[c.LogLevel] {
 		return fmt.Errorf("invalid log level: %s", c.LogLevel)
+	}
+
+	if c.SnapshotCompressionLevel < 1 || c.SnapshotCompressionLevel > 9 {
+		return fmt.Errorf("snapshot_compression_level must be between 1 and 9")
 	}
 
 	return nil

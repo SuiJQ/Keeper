@@ -202,7 +202,7 @@ func TestCreateSnapshot(t *testing.T) {
 	require.NoError(t, err)
 
 	// 创建快照
-	err = store.CreateSnapshot(ctx, "test-agent", "snap1")
+	err = store.CreateSnapshot(ctx, "test-agent", "snap1", gzip.DefaultCompression)
 	require.NoError(t, err)
 
 	// 验证快照目录存在
@@ -225,7 +225,7 @@ func TestRollbackSnapshot(t *testing.T) {
 	require.NoError(t, err)
 
 	// 创建快照
-	err = store.CreateSnapshot(ctx, "test-agent", "snap1")
+	err = store.CreateSnapshot(ctx, "test-agent", "snap1", gzip.DefaultCompression)
 	require.NoError(t, err)
 
 	// 修改文件
@@ -301,12 +301,12 @@ func TestListSnapshots(t *testing.T) {
 	require.NoError(t, err)
 
 	// 创建多个快照
-	err = store.CreateSnapshot(ctx, "test-agent", "snap1")
+	err = store.CreateSnapshot(ctx, "test-agent", "snap1", gzip.DefaultCompression)
 	require.NoError(t, err)
 
 	time.Sleep(10 * time.Millisecond) // 确保时间不同
 
-	err = store.CreateSnapshot(ctx, "test-agent", "snap2")
+	err = store.CreateSnapshot(ctx, "test-agent", "snap2", gzip.DefaultCompression)
 	require.NoError(t, err)
 
 	// 列出快照
@@ -353,7 +353,7 @@ func TestRollbackSnapshotMultiple(t *testing.T) {
 	require.NoError(t, err)
 
 	// 创建快照1
-	err = store.CreateSnapshot(ctx, "test-agent", "snap1")
+	err = store.CreateSnapshot(ctx, "test-agent", "snap1", gzip.DefaultCompression)
 	require.NoError(t, err)
 
 	// 修改文件
@@ -361,7 +361,7 @@ func TestRollbackSnapshotMultiple(t *testing.T) {
 	require.NoError(t, err)
 
 	// 创建快照2
-	err = store.CreateSnapshot(ctx, "test-agent", "snap2")
+	err = store.CreateSnapshot(ctx, "test-agent", "snap2", gzip.DefaultCompression)
 	require.NoError(t, err)
 
 	// 再次修改文件
@@ -405,7 +405,7 @@ func TestCreateSnapshotWithWorkspace(t *testing.T) {
 	require.NoError(t, err)
 
 	// 创建快照
-	err = store.CreateSnapshot(ctx, "test-agent", "snap1")
+	err = store.CreateSnapshot(ctx, "test-agent", "snap1", gzip.DefaultCompression)
 	require.NoError(t, err)
 
 	// 验证快照包含 upper 和 workspace
@@ -430,7 +430,7 @@ func TestForkAgentWithSnapshots(t *testing.T) {
 	require.NoError(t, err)
 
 	// 创建快照
-	err = store.CreateSnapshot(ctx, "source", "snap1")
+	err = store.CreateSnapshot(ctx, "source", "snap1", gzip.DefaultCompression)
 	require.NoError(t, err)
 
 	// Fork

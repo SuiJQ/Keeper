@@ -387,6 +387,9 @@ func runAgentCommand(cfg *config.Config, args []string) error {
 
 	// 注册配置热加载回调
 	cfg.OnReload(func(newCfg *config.Config) {
+		// 注意：日志级别不支持热加载，需要重启进程生效
+		// logger.SetLevel(newCfg.LogLevel)
+
 		// 更新 MCP Server 授权配置
 		mcpServer.UpdateAllowedUIDs(newCfg.MCPAllowedUIDs)
 		mcpServer.UpdateAllowedGIDs(newCfg.MCPAllowedGIDs)
@@ -413,13 +416,30 @@ func runAgentCommand(cfg *config.Config, args []string) error {
 			} else {
 				bc.SetOverlayStrategy(overlayStrat)
 			}
+			if networkStrat, err := container.NewNetworkStrategy("default", logger); err != nil {
+				logger.Warn("invalid network strategy, using default", log.Field{Key: "error", Value: err.Error()})
+			} else {
+				bc.SetNetworkStrategy(networkStrat)
+			}
+			if resourceStrat, err := container.NewResourceStrategy("default", logger); err != nil {
+				logger.Warn("invalid resource strategy, using default", log.Field{Key: "error", Value: err.Error()})
+			} else {
+				bc.SetResourceStrategy(resourceStrat)
+			}
+			if logStrat, err := container.NewLogStrategy("default", logger); err != nil {
+				logger.Warn("invalid log strategy, using default", log.Field{Key: "error", Value: err.Error()})
+			} else {
+				bc.SetLogStrategy(logStrat)
+			}
 		}
 
 		logger.Info("configuration reloaded",
+			log.Field{Key: "log_level", Value: newCfg.LogLevel},
 			log.Field{Key: "shm_size_mb", Value: newCfg.DefaultShmSizeMB},
 			log.Field{Key: "watchdog_timeout", Value: newCfg.WatchdogTimeout},
 			log.Field{Key: "seccomp_strategy", Value: newCfg.SeccompStrategy},
-			log.Field{Key: "overlay_strategy", Value: newCfg.OverlayStrategy})
+			log.Field{Key: "overlay_strategy", Value: newCfg.OverlayStrategy},
+			log.Field{Key: "snapshot_compression_level", Value: newCfg.SnapshotCompressionLevel})
 	})
 
 	// 注册 Agent 到看门狗
@@ -621,7 +641,7 @@ func snapshotAgent(cfg *config.Config, args []string) error {
 	}
 
 	// 创建快照
-	if err := store.CreateSnapshot(context.Background(), name, snapshotID); err != nil {
+	if err := store.CreateSnapshot(context.Background(), name, snapshotID, cfg.SnapshotCompressionLevel); err != nil {
 		return fmt.Errorf("create snapshot: %w", err)
 	}
 

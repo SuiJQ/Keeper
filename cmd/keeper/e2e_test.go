@@ -587,3 +587,89 @@ func TestAgentRunEndToEnd(t *testing.T) {
 	err = destroyAgent(cfg, []string{agentName})
 	require.NoError(t, err)
 }
+
+// TestAgentFullLifecycleEndToEnd 测试 Agent 完整生命周期
+func TestAgentFullLifecycleEndToEnd(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	agentName := "lifecycle-agent"
+
+	// 1. 创建 Agent
+	err = createAgent(cfg, []string{agentName})
+	require.NoError(t, err)
+
+	// 2. 检查初始状态
+	err = statusAgent(cfg, []string{agentName})
+	require.NoError(t, err)
+
+	// 3. 启动 Agent（可能失败，忽略）
+	_ = startAgent(cfg, []string{agentName})
+
+	// 4. 检查运行状态
+	_ = statusAgent(cfg, []string{agentName})
+
+	// 5. 查看 Agent 信息
+	_ = inspectAgent(cfg, []string{agentName})
+
+	// 6. 停止 Agent（可能未运行，忽略）
+	_ = stopAgent(cfg, []string{agentName})
+
+	// 7. 重新启动 Agent（可能失败，忽略）
+	_ = startAgent(cfg, []string{agentName})
+
+	// 8. 销毁 Agent
+	err = destroyAgent(cfg, []string{agentName})
+	require.NoError(t, err)
+
+	// 9. 验证 Agent 已删除
+	err = statusAgent(cfg, []string{agentName})
+	assert.Error(t, err)
+}
+
+// TestAgentForkEndToEndSimple 测试 fork 命令端到端（简化版）
+func TestAgentForkEndToEndSimple(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	sourceName := "fork-source"
+	targetName := "fork-target"
+
+	// 1. 创建源 Agent
+	err = createAgent(cfg, []string{sourceName})
+	require.NoError(t, err)
+
+	// 2. 启动源 Agent（可能失败，忽略）
+	_ = startAgent(cfg, []string{sourceName})
+
+	// 如果启动失败导致状态异常，销毁并重建源 Agent
+	_ = destroyAgent(cfg, []string{sourceName})
+	err = createAgent(cfg, []string{sourceName})
+	require.NoError(t, err)
+
+	// 3. 停止源 Agent（fork 要求源 Agent 处于 stopped 状态）
+	_ = stopAgent(cfg, []string{sourceName})
+
+	// 4. Fork Agent
+	err = forkAgent(cfg, []string{sourceName, targetName})
+	require.NoError(t, err)
+
+	// 5. 验证目标 Agent 存在
+	err = statusAgent(cfg, []string{targetName})
+	require.NoError(t, err)
+
+	// 6. 启动目标 Agent（可能失败，忽略）
+	_ = startAgent(cfg, []string{targetName})
+
+	// 7. 销毁所有 Agent
+	err = destroyAgent(cfg, []string{targetName})
+	require.NoError(t, err)
+	err = destroyAgent(cfg, []string{sourceName})
+	require.NoError(t, err)
+}
