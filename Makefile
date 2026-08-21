@@ -26,6 +26,14 @@ build-static: ## 构建静态二进制文件
 	@CGO_ENABLED=$(CGO_ENABLED) $(GO) build $(LDFLAGS) -o bin/$(BINARY_NAME)-static ./cmd/keeper
 	@echo "构建完成: bin/$(BINARY_NAME)-static"
 
+build-multiarch: ## 多架构构建
+	@echo "多架构构建..."
+	@mkdir -p bin
+	@GOOS=linux GOARCH=amd64 CGO_ENABLED=$(CGO_ENABLED) $(GO) build $(LDFLAGS) -o bin/$(BINARY_NAME)-linux-amd64 ./cmd/keeper
+	@GOOS=linux GOARCH=arm64 CGO_ENABLED=$(CGO_ENABLED) $(GO) build $(LDFLAGS) -o bin/$(BINARY_NAME)-linux-arm64 ./cmd/keeper
+	@echo "多架构构建完成:"
+	@ls -lh bin/$(BINARY_NAME)-linux-*
+
 test: ## 运行单元测试
 	@echo "运行测试..."
 	@$(GO) test -v -race -coverprofile=coverage.out ./...
