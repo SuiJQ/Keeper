@@ -1,6 +1,8 @@
 package storage
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"context"
 	"os"
 	"path/filepath"
@@ -567,4 +569,206 @@ func TestAtomicExchangeNonExistent(t *testing.T) {
 	// 交换不存在的文件应该返回错误
 	err = atomicExchange(source, target)
 	assert.Error(t, err)
+}
+
+// TestListAgentsEmpty 测试空目录
+func TestListAgentsEmpty(t *testing.T) {
+	tmpDir := t.TempDir()
+	store, err := NewStore(tmpDir)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	agents, err := store.ListAgents(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, agents)
+}
+
+// TestListAgentsInvalidDir 测试无效目录
+func TestListAgentsInvalidDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	store, err := NewStore(tmpDir)
+	require.NoError(t, err)
+
+	// 创建无效的 agent 目录（没有 meta.json）
+	invalidDir := filepath.Join(tmpDir, "agents", "invalid-agent")
+	os.MkdirAll(invalidDir, 0755)
+
+	ctx := context.Background()
+	agents, err := store.ListAgents(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, agents) // 应该跳过无效目录
+}
+
+// TestAtomicWriteFile 测试原子写文件
+func TestAtomicWriteFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	filename := filepath.Join(tmpDir, "test.txt")
+
+	// 写入数据
+	err := atomicWriteFile(filename, []byte("hello world"))
+	require.NoError(t, err)
+
+	// 验证内容
+	content, err := os.ReadFile(filename)
+	require.NoError(t, err)
+	assert.Equal(t, "hello world", string(content))
+}
+
+// TestAtomicWriteFileDirNotExist 测试目录不存在
+func TestAtomicWriteFileDirNotExist(t *testing.T) {
+	tmpDir := t.TempDir()
+	filename := filepath.Join(tmpDir, "subdir", "test.txt")
+
+	// 目录不存在，应该返回错误
+	err := atomicWriteFile(filename, []byte("hello world"))
+	assert.Error(t, err)
+}
+
+// TestRecreateWorkDir 测试重建 work 目录
+func TestRecreateWorkDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	workDir := filepath.Join(tmpDir, "work")
+
+	// 创建 work 目录
+	os.MkdirAll(workDir, 0755)
+	os.WriteFile(filepath.Join(workDir, "test.txt"), []byte("test"), 0644)
+
+	// 重建 work 目录
+	err := recreateWorkDir(workDir)
+	require.NoError(t, err)
+
+	// 验证 work 目录存在
+	_, err = os.Stat(workDir)
+	assert.NoError(t, err)
+
+	// 验证旧文件已删除
+	_, err = os.Stat(filepath.Join(workDir, "test.txt"))
+	assert.True(t, os.IsNotExist(err))
+}
+
+// TestRecreateWorkDirExistingPurge 测试已存在的 purge 目录
+func TestRecreateWorkDirExistingPurge(t *testing.T) {
+	tmpDir := t.TempDir()
+	workDir := filepath.Join(tmpDir, "work")
+	purgeDir := workDir + ".purge"
+
+	// 创建 work 目录和 purge 目录
+	os.MkdirAll(workDir, 0755)
+	os.MkdirAll(purgeDir, 0755)
+	os.WriteFile(filepath.Join(workDir, "test.txt"), []byte("test"), 0644)
+
+	// 重建 work 目录（purge 目录已存在）
+	err := recreateWorkDir(workDir)
+	require.NoError(t, err)
+
+	// 验证 work 目录存在
+	_, err = os.Stat(workDir)
+	assert.NoError(t, err)
+}
+
+// TestRollbackSnapshotNotFound 测试快照不存在
+func TestRollbackSnapshotNotFound(t *testing.T) {
+	tmpDir := t.TempDir()
+	store, err := NewStore(tmpDir)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	_, err = store.CreateAgent(ctx, "test-agent", 64, 1024*1024*1024)
+	require.NoError(t, err)
+
+	// 回滚不存在的快照
+	err = store.RollbackSnapshot(ctx, "test-agent", "nonexistent")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
+}
+
+// TestDecompressCopy 测试解压复制
+func TestDecompressCopy(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// 创建 tar.gz 文件
+	srcFile := filepath.Join(tmpDir, "test.tar.gz")
+	f, err := os.Create(srcFile)
+	require.NoError(t, err)
+
+	gw := gzip.NewWriter(f)
+	tw := tar.NewWriter(gw)
+
+	// 添加一个文件
+	err = tw.WriteHeader(&tar.Header{
+		Name: "test.txt",
+		Mode: 0644,
+		Size: 11,
+	})
+	require.NoError(t, err)
+	_, err = tw.Write([]byte("hello world"))
+	require.NoError(t, err)
+
+	tw.Close()
+	gw.Close()
+	f.Close()
+
+	// 解压到目标目录
+	dstDir := filepath.Join(tmpDir, "dst")
+	err = decompressCopy(srcFile, dstDir)
+	require.NoError(t, err)
+
+	// 验证文件存在
+	dstFile := filepath.Join(dstDir, "test.txt")
+	content, err := os.ReadFile(dstFile)
+	require.NoError(t, err)
+	assert.Equal(t, "hello world", string(content))
+}
+
+// TestDecompressCopyInvalidFile 测试无效文件
+func TestDecompressCopyInvalidFile(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// 创建无效的 tar.gz 文件
+	srcFile := filepath.Join(tmpDir, "invalid.tar.gz")
+	os.WriteFile(srcFile, []byte("not a valid tar.gz"), 0644)
+
+	dstDir := filepath.Join(tmpDir, "dst")
+	err := decompressCopy(srcFile, dstDir)
+	assert.Error(t, err)
+}
+
+// TestPruneCacheDryRun 测试 dry run 模式
+func TestPruneCacheDryRun(t *testing.T) {
+	tmpDir := t.TempDir()
+	store, err := NewStore(tmpDir)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	_, err = store.CreateAgent(ctx, "agent-a", 64, 1024*1024*1024)
+	require.NoError(t, err)
+
+	// 创建缓存目录
+	cacheDir := filepath.Join(tmpDir, "cache", "rootfs")
+	os.MkdirAll(filepath.Join(cacheDir, "unused-cache"), 0700)
+
+	// Prune dry run
+	deleted, err := store.PruneCache(ctx, true)
+	require.NoError(t, err)
+	assert.Contains(t, deleted, "unused-cache")
+
+	// 验证缓存目录仍然存在
+	_, err = os.Stat(filepath.Join(cacheDir, "unused-cache"))
+	assert.NoError(t, err)
+}
+
+// TestPruneCacheEmpty 测试空缓存
+func TestPruneCacheEmpty(t *testing.T) {
+	tmpDir := t.TempDir()
+	store, err := NewStore(tmpDir)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	_, err = store.CreateAgent(ctx, "agent-a", 64, 1024*1024*1024)
+	require.NoError(t, err)
+
+	// Prune 空缓存
+	deleted, err := store.PruneCache(ctx, false)
+	require.NoError(t, err)
+	assert.Empty(t, deleted)
 }
