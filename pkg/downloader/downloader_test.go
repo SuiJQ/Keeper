@@ -179,3 +179,92 @@ func parseInt64(s string) int64 {
 	n, _ := strconv.ParseInt(s, 10, 64)
 	return n
 }
+
+func TestDownloadFile(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "200")
+		w.WriteHeader(http.StatusOK)
+		for i := 0; i < 200; i++ {
+			w.Write([]byte{byte(i % 256)})
+		}
+	}))
+	defer ts.Close()
+
+	tmpFile := "/tmp/test_download_file.bin"
+	defer os.Remove(tmpFile)
+
+	err := DownloadFile(context.Background(), ts.URL, tmpFile)
+	assert.NoError(t, err)
+
+	info, err := os.Stat(tmpFile)
+	assert.NoError(t, err)
+	assert.Equal(t, int64(200), info.Size())
+}
+
+func TestDownloadFileWithProgress(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "150")
+		w.WriteHeader(http.StatusOK)
+		for i := 0; i < 150; i++ {
+			w.Write([]byte{byte(i % 256)})
+		}
+	}))
+	defer ts.Close()
+
+	tmpFile := "/tmp/test_download_progress_file.bin"
+	defer os.Remove(tmpFile)
+
+	var totalProgress int64
+	var lastProgress int64
+	callback := func(downloaded, total int64) {
+		totalProgress++
+		lastProgress = downloaded
+	}
+
+	err := DownloadFileWithProgress(context.Background(), ts.URL, tmpFile, callback)
+	assert.NoError(t, err)
+	assert.Greater(t, totalProgress, int64(0))
+	assert.Equal(t, int64(150), lastProgress)
+}
+
+func TestDownloadWithContextCancel(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "1000000")
+		w.WriteHeader(http.StatusOK)
+		// 缓慢发送数据
+		for i := 0; i < 1000000; i++ {
+			w.Write([]byte{byte(i % 256)})
+			if i%10000 == 0 {
+				time.Sleep(1 * time.Millisecond)
+			}
+		}
+	}))
+	defer ts.Close()
+
+	tmpFile := "/tmp/test_download_cancel.bin"
+	defer os.Remove(tmpFile)
+
+	config := &Config{
+		URL:        ts.URL,
+		OutputPath: tmpFile,
+		Threads:    1,
+		Timeout:    30 * time.Second,
+		MaxRetries: 1,
+		RetryDelay: 100 * time.Millisecond,
+	}
+	downloader := NewDownloader(config, nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+
+	err := downloader.Download(ctx)
+	assert.Error(t, err)
+}
+
+func TestDownloadWithInvalidURL(t *testing.T) {
+	tmpFile := "/tmp/test_download_invalid.bin"
+	defer os.Remove(tmpFile)
+
+	err := DownloadFile(context.Background(), "http://invalid.url.that.does.not.exist:12345/test", tmpFile)
+	assert.Error(t, err)
+}
