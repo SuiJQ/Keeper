@@ -673,3 +673,54 @@ func TestAgentForkEndToEndSimple(t *testing.T) {
 	err = destroyAgent(cfg, []string{sourceName})
 	require.NoError(t, err)
 }
+
+// TestAgentFullChainOperations 测试 cp/snapshot/rollback/recover 全链路操作
+func TestAgentFullChainOperations(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	agentName := "full-chain-agent"
+	sourceDir := filepath.Join(tmpDir, "source")
+	os.MkdirAll(sourceDir, 0755)
+	testFile := filepath.Join(sourceDir, "test.txt")
+	err = os.WriteFile(testFile, []byte("original content"), 0644)
+	require.NoError(t, err)
+
+	// 1. 创建 Agent
+	err = createAgent(cfg, []string{agentName})
+	require.NoError(t, err)
+
+	// 2. 复制文件到 Agent
+	err = copyFile(cfg, []string{sourceDir, agentName + ":"})
+	require.NoError(t, err)
+
+	// 3. 创建快照
+	snapshotName := "chain-snap"
+	err = snapshotAgent(cfg, []string{agentName, snapshotName})
+	require.NoError(t, err)
+
+	// 4. 修改源文件并再次复制
+	err = os.WriteFile(testFile, []byte("modified content"), 0644)
+	require.NoError(t, err)
+	err = copyFile(cfg, []string{sourceDir, agentName + ":"})
+	require.NoError(t, err)
+
+	// 5. 回滚到快照
+	err = rollbackAgent(cfg, []string{agentName, snapshotName})
+	require.NoError(t, err)
+
+	// 6. 恢复 Agent
+	err = recoverAgent(cfg, []string{agentName})
+	require.NoError(t, err)
+
+	// 7. 验证 Agent 状态
+	err = statusAgent(cfg, []string{agentName})
+	require.NoError(t, err)
+
+	// 8. 销毁 Agent
+	err = destroyAgent(cfg, []string{agentName})
+	require.NoError(t, err)
+}
