@@ -56,8 +56,9 @@ func (s *HTTPServer) Start() error {
 		Handler: mux,
 	}
 
+	server := s.server
 	go func() {
-		if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			// 记录错误但不panic
 			fmt.Printf("metrics server error: %v\n", err)
 		}
