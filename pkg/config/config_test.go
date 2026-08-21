@@ -177,3 +177,107 @@ func TestConfigDurationParsing(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 15*time.Minute, downloadTimeout)
 }
+
+func TestConfigReloadNoChange(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := DefaultConfig()
+	cfg.Home = tmpDir
+	cfg.DefaultShmSizeMB = 64
+	require.NoError(t, cfg.Save())
+
+	// 初次加载
+	loaded, err := Load(tmpDir)
+	require.NoError(t, err)
+	assert.Equal(t, 64, loaded.DefaultShmSizeMB)
+
+	// 未修改配置文件，重载不应触发回调
+	called := false
+	loaded.OnReload(func(c *Config) {
+		called = true
+	})
+
+	require.NoError(t, loaded.ReloadIfChanged())
+	assert.False(t, called, "callback should not be called when config unchanged")
+}
+
+func TestConfigReloadMultipleTimes(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := DefaultConfig()
+	cfg.Home = tmpDir
+	cfg.DefaultShmSizeMB = 64
+	require.NoError(t, cfg.Save())
+
+	// 初次加载
+	loaded, err := Load(tmpDir)
+	require.NoError(t, err)
+
+	callbackCount := 0
+	loaded.OnReload(func(c *Config) {
+		callbackCount++
+	})
+
+	// 第一次修改
+	configFile := filepath.Join(tmpDir, "config.json")
+	newData1 := []byte(`{"default_shm_size_mb":128}`)
+	require.NoError(t, os.WriteFile(configFile, newData1, 0644))
+	waitForFileChange(t, configFile, loaded.modTime)
+	require.NoError(t, loaded.ReloadIfChanged())
+	assert.Equal(t, 1, callbackCount)
+	assert.Equal(t, 128, loaded.DefaultShmSizeMB)
+
+	// 第二次修改
+	newData2 := []byte(`{"default_shm_size_mb":256}`)
+	require.NoError(t, os.WriteFile(configFile, newData2, 0644))
+	waitForFileChange(t, configFile, loaded.modTime)
+	require.NoError(t, loaded.ReloadIfChanged())
+	assert.Equal(t, 2, callbackCount)
+	assert.Equal(t, 256, loaded.DefaultShmSizeMB)
+}
+
+func TestConfigReloadInvalidJSON(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := DefaultConfig()
+	cfg.Home = tmpDir
+	cfg.DefaultShmSizeMB = 64
+	require.NoError(t, cfg.Save())
+
+	// 初次加载
+	loaded, err := Load(tmpDir)
+	require.NoError(t, err)
+	assert.Equal(t, 64, loaded.DefaultShmSizeMB)
+
+	// 写入无效 JSON
+	configFile := filepath.Join(tmpDir, "config.json")
+	require.NoError(t, os.WriteFile(configFile, []byte(`{invalid json}`), 0644))
+	waitForFileChange(t, configFile, loaded.modTime)
+
+	// 重载应失败，但不应改变当前配置
+	require.Error(t, loaded.ReloadIfChanged())
+	assert.Equal(t, 64, loaded.DefaultShmSizeMB, "config should not be corrupted on reload error")
+}
+
+func TestConfigReloadPartialUpdate(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := DefaultConfig()
+	cfg.Home = tmpDir
+	cfg.DefaultShmSizeMB = 64
+	cfg.LogLevel = "info"
+	require.NoError(t, cfg.Save())
+
+	// 初次加载
+	loaded, err := Load(tmpDir)
+	require.NoError(t, err)
+	assert.Equal(t, 64, loaded.DefaultShmSizeMB)
+	assert.Equal(t, "info", loaded.LogLevel)
+
+	// 只修改部分字段
+	configFile := filepath.Join(tmpDir, "config.json")
+	newData := []byte(`{"log_level":"debug"}`)
+	require.NoError(t, os.WriteFile(configFile, newData, 0644))
+	waitForFileChange(t, configFile, loaded.modTime)
+	require.NoError(t, loaded.ReloadIfChanged())
+
+	// 验证：修改的字段已更新，未修改的字段保持默认
+	assert.Equal(t, "debug", loaded.LogLevel)
+	assert.Equal(t, 64, loaded.DefaultShmSizeMB, "unmodified field should retain default value")
+}
