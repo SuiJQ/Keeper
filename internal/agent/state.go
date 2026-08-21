@@ -3,6 +3,7 @@ package agent
 
 import (
 	"fmt"
+	"sync"
 	"time"
 )
 
@@ -52,28 +53,27 @@ func (s State) String() string {
 // StateMachine 状态机
 type StateMachine struct {
 	current State
-	mu      chan struct{} // 互斥锁（使用 channel 实现）
+	mu      sync.Mutex
 }
 
 // NewStateMachine 创建状态机
 func NewStateMachine(initial State) *StateMachine {
 	return &StateMachine{
 		current: initial,
-		mu:      make(chan struct{}, 1),
 	}
 }
 
 // State 获取当前状态
 func (sm *StateMachine) State() State {
-	sm.mu <- struct{}{}
-	defer func() { <-sm.mu }()
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
 	return sm.current
 }
 
 // CanTransition 检查状态转换是否允许
 func (sm *StateMachine) CanTransition(to State) error {
-	sm.mu <- struct{}{}
-	defer func() { <-sm.mu }()
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
 
 	from := sm.current
 
@@ -104,15 +104,35 @@ func (sm *StateMachine) CanTransition(to State) error {
 
 // SetState 设置新状态（线程安全）
 func (sm *StateMachine) SetState(to State) error {
-	sm.mu <- struct{}{}
-	defer func() { <-sm.mu }()
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
 
-	if err := sm.CanTransition(to); err != nil {
-		return fmt.Errorf("state transition not allowed: %w", err)
+	from := sm.current
+
+	// 允许的状态转换
+	allowed := map[State][]State{
+		StateCreated:      {StateRunning},
+		StateStopped:      {StateRunning},
+		StateRunning:      {StateStopped, StateFatalDState},
+		StateFatalKernel:  {StateStopped},
+		StateFatalDState:  {StateStopped},
+		StateFatalBwrap:   {StateStopped},
+		StateFatalNoSpace: {StateStopped},
 	}
 
-	sm.current = to
-	return nil
+	permitted, ok := allowed[from]
+	if !ok {
+		return fmt.Errorf("invalid state: %s", from)
+	}
+
+	for _, p := range permitted {
+		if p == to {
+			sm.current = to
+			return nil
+		}
+	}
+
+	return fmt.Errorf("state transition not allowed: %s -> %s", from, to)
 }
 
 // Agent Agent 核心结构
