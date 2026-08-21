@@ -187,7 +187,7 @@ func startAgent(cfg *config.Config, args []string) error {
 			// 更新状态为 fatal
 			meta.State = "fatal_bwrap_exec"
 			meta.Error = err.Error()
-			store.UpdateAgent(context.Background(), meta)
+			_ = store.UpdateAgent(context.Background(), meta)
 			return fmt.Errorf("start container: %w", err)
 		}
 
@@ -450,7 +450,7 @@ func runAgentCommand(cfg *config.Config, args []string) error {
 	if err := mcpServer.Start(ctx); err != nil {
 		return fmt.Errorf("start mcp server: %w", err)
 	}
-	defer mcpServer.Stop()
+	defer func() { _ = mcpServer.Stop() }()
 
 	if err := wd.Start(ctx); err != nil {
 		return fmt.Errorf("start watchdog: %w", err)
@@ -465,7 +465,7 @@ func runAgentCommand(cfg *config.Config, args []string) error {
 	defer func() {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		metricsServer.Stop(shutdownCtx)
+		_ = metricsServer.Stop(shutdownCtx)
 	}()
 
 	// 记录 agent 启动指标

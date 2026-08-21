@@ -77,7 +77,7 @@ func TestServerStartAlreadyRunning(t *testing.T) {
 	assert.Contains(t, err.Error(), "already running")
 
 	// 清理
-	server.Stop()
+	_ = server.Stop()
 }
 
 func TestServerStopNotRunning(t *testing.T) {
@@ -347,7 +347,7 @@ func TestMCPEndToEnd(t *testing.T) {
 	ctx := context.Background()
 	err = server.Start(ctx)
 	require.NoError(t, err)
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	// 连接 Unix socket
 	conn, err := net.Dial("unix", cfg.SocketPath)
@@ -403,7 +403,7 @@ func TestMCPConnectionAuth(t *testing.T) {
 	ctx := context.Background()
 	err = server.Start(ctx)
 	require.NoError(t, err)
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	// 连接 Unix socket（客户端 UID 通常不是 1000/1001）
 	conn, err := net.Dial("unix", cfg.SocketPath)
@@ -444,7 +444,7 @@ func TestMCPConcurrentConnections(t *testing.T) {
 	ctx := context.Background()
 	err = server.Start(ctx)
 	require.NoError(t, err)
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	// 并发建立多个连接
 	const numConnections = 5
@@ -467,10 +467,10 @@ func TestMCPConcurrentConnections(t *testing.T) {
 				Method:  "initialize",
 				Params:  map[string]interface{}{},
 			}
-			json.NewEncoder(conn).Encode(req)
+			_ = json.NewEncoder(conn).Encode(req)
 
 			var resp Response
-			json.NewDecoder(conn).Decode(&resp)
+			_ = json.NewDecoder(conn).Decode(&resp)
 		}(i)
 	}
 

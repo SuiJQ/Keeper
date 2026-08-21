@@ -59,7 +59,7 @@ func TestSOCKS5ServerHandleUsernameAuth(t *testing.T) {
 			// 启动服务器
 			err := server.Start()
 			require.NoError(t, err)
-			defer server.Stop()
+			defer func() { _ = server.Stop() }()
 
 			// 创建客户端连接
 			conn, err := net.Dial("tcp", server.Addr())
@@ -67,7 +67,7 @@ func TestSOCKS5ServerHandleUsernameAuth(t *testing.T) {
 			defer conn.Close()
 
 			// 发送认证版本协商
-			conn.Write([]byte{0x05, 0x01, 0x00, 0x02, 0x00, 0x01})
+			_, _ = conn.Write([]byte{0x05, 0x01, 0x00, 0x02, 0x00, 0x01})
 
 			// 读取版本协商响应
 			buf := make([]byte, 256)
@@ -75,7 +75,7 @@ func TestSOCKS5ServerHandleUsernameAuth(t *testing.T) {
 			assert.Equal(t, []byte{0x05, 0x02}, buf[:n])
 
 			// 发送用户名密码认证请求
-			conn.Write(tt.request)
+			_, _ = conn.Write(tt.request)
 
 			// 读取认证响应
 			n, _ = conn.Read(buf)
@@ -104,9 +104,9 @@ func TestSOCKS5ServerHandleConnect(t *testing.T) {
 			}
 			go func(c net.Conn) {
 				defer c.Close()
-				c.Write([]byte("hello"))
+				_, _ = c.Write([]byte("hello"))
 				buf := make([]byte, 1024)
-				c.Read(buf)
+				_, _ = c.Read(buf)
 			}(conn)
 		}
 	}()
@@ -138,7 +138,7 @@ func TestSOCKS5ServerHandleConnect(t *testing.T) {
 			// 启动服务器
 			err := server.Start()
 			require.NoError(t, err)
-			defer server.Stop()
+			defer func() { _ = server.Stop() }()
 
 			// 创建客户端连接
 			conn, err := net.Dial("tcp", server.Addr())
@@ -146,7 +146,7 @@ func TestSOCKS5ServerHandleConnect(t *testing.T) {
 			defer conn.Close()
 
 			// 发送版本协商（无认证）
-			conn.Write([]byte{0x05, 0x01, 0x00})
+			_, _ = conn.Write([]byte{0x05, 0x01, 0x00})
 
 			// 读取版本协商响应
 			buf := make([]byte, 256)
@@ -175,10 +175,10 @@ func TestSOCKS5ServerHandleConnect(t *testing.T) {
 			req = append(req, byte(portNum>>8), byte(portNum&0xff))
 
 			// 发送 CONNECT 请求
-			conn.Write(req)
+			_, _ = conn.Write(req)
 
 			// 读取响应
-			n, _ = conn.Read(buf)
+			_, _ = conn.Read(buf)
 			if tt.expectSuccess {
 				assert.Equal(t, byte(0x05), buf[0])
 				assert.Equal(t, byte(0x00), buf[1])
@@ -198,7 +198,7 @@ func TestSOCKS5ServerHandleConnectUnsupportedCommand(t *testing.T) {
 	// 启动服务器
 	err := server.Start()
 	require.NoError(t, err)
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	// 创建客户端连接
 	conn, err := net.Dial("tcp", server.Addr())
@@ -206,7 +206,7 @@ func TestSOCKS5ServerHandleConnectUnsupportedCommand(t *testing.T) {
 	defer conn.Close()
 
 	// 发送版本协商（无认证）
-	conn.Write([]byte{0x05, 0x01, 0x00})
+	_, _ = conn.Write([]byte{0x05, 0x01, 0x00})
 
 	// 读取版本协商响应
 	buf := make([]byte, 256)
@@ -217,7 +217,7 @@ func TestSOCKS5ServerHandleConnectUnsupportedCommand(t *testing.T) {
 	req := []byte{0x05, 0x02, 0x00, 0x01, 0, 0, 0, 0, 0, 0}
 
 	// 发送请求
-	conn.Write(req)
+	_, _ = conn.Write(req)
 
 	// 读取响应（应该返回命令不支持）
 	n, _ = conn.Read(buf)
@@ -232,7 +232,7 @@ func TestSOCKS5ServerHandleConnectUnsupportedAddrType(t *testing.T) {
 	// 启动服务器
 	err := server.Start()
 	require.NoError(t, err)
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	// 创建客户端连接
 	conn, err := net.Dial("tcp", server.Addr())
@@ -240,7 +240,7 @@ func TestSOCKS5ServerHandleConnectUnsupportedAddrType(t *testing.T) {
 	defer conn.Close()
 
 	// 发送版本协商（无认证）
-	conn.Write([]byte{0x05, 0x01, 0x00})
+	_, _ = conn.Write([]byte{0x05, 0x01, 0x00})
 
 	// 读取版本协商响应
 	buf := make([]byte, 256)
@@ -251,7 +251,7 @@ func TestSOCKS5ServerHandleConnectUnsupportedAddrType(t *testing.T) {
 	req := []byte{0x05, 0x01, 0x00, 0x02, 0, 0, 0, 0, 0, 0}
 
 	// 发送请求
-	conn.Write(req)
+	_, _ = conn.Write(req)
 
 	// 读取响应（应该返回地址类型不支持）
 	n, _ = conn.Read(buf)
@@ -261,8 +261,8 @@ func TestSOCKS5ServerHandleConnectUnsupportedAddrType(t *testing.T) {
 // BenchmarkSOCKS5HandleUsernameAuth 性能测试
 func BenchmarkSOCKS5HandleUsernameAuth(b *testing.B) {
 	server := NewSOCKS5Server("127.0.0.1:0", &ProxyAuth{Username: "test", Password: "\x01"}, log.Global())
-	server.Start()
-	defer server.Stop()
+	_ = server.Start()
+	defer func() { _ = server.Stop() }()
 
 	request := []byte{0x01, 0x04, 0x74, 0x65, 0x73, 0x74, 0x01, 0x01}
 
@@ -271,11 +271,11 @@ func BenchmarkSOCKS5HandleUsernameAuth(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
-		conn.Write([]byte{0x05, 0x01, 0x00, 0x02, 0x00, 0x01})
+		_, _ = conn.Write([]byte{0x05, 0x01, 0x00, 0x02, 0x00, 0x01})
 		buf := make([]byte, 256)
-		conn.Read(buf)
-		conn.Write(request)
-		conn.Read(buf)
+		_, _ = conn.Read(buf)
+		_, _ = conn.Write(request)
+		_, _ = conn.Read(buf)
 		conn.Close()
 	}
 }
@@ -283,22 +283,22 @@ func BenchmarkSOCKS5HandleUsernameAuth(b *testing.B) {
 // BenchmarkSOCKS5HandleConnect 性能测试
 func BenchmarkSOCKS5HandleConnect(b *testing.B) {
 	server := NewSOCKS5Server("127.0.0.1:0", nil, log.Global())
-	server.Start()
-	defer server.Stop()
+	_ = server.Start()
+	defer func() { _ = server.Stop() }()
 
 	for i := 0; i < b.N; i++ {
 		conn, err := net.Dial("tcp", server.Addr())
 		if err != nil {
 			b.Fatal(err)
 		}
-		conn.Write([]byte{0x05, 0x01, 0x00})
+		_, _ = conn.Write([]byte{0x05, 0x01, 0x00})
 		buf := make([]byte, 256)
-		conn.Read(buf)
+		_, _ = conn.Read(buf)
 
 		// 构建 CONNECT 请求到本地回环
 		req := []byte{0x05, 0x01, 0x00, 0x01, 0x7f, 0x00, 0x00, 0x01, 0x00, 0x00}
-		conn.Write(req)
-		conn.Read(buf)
+		_, _ = conn.Write(req)
+		_, _ = conn.Read(buf)
 		conn.Close()
 	}
 }

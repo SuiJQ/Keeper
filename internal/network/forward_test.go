@@ -111,7 +111,7 @@ func TestIoCopyTimeout(t *testing.T) {
 	// 设置读取超时
 	go func() {
 		time.Sleep(100 * time.Millisecond)
-		server.Write([]byte("test"))
+		_, _ = server.Write([]byte("test"))
 	}()
 
 	// 使用 bufferPool 进行复制
@@ -119,7 +119,7 @@ func TestIoCopyTimeout(t *testing.T) {
 	defer bufferPool.Put(bufPtr)
 
 	// 设置超时
-	client.SetReadDeadline(time.Now().Add(50 * time.Millisecond))
+	_ = client.SetReadDeadline(time.Now().Add(50 * time.Millisecond))
 
 	buf := *bufPtr
 	_, err := client.Read(buf)
@@ -190,7 +190,7 @@ func TestIoCopyBidirectionalComplete(t *testing.T) {
 
 	// 客户端发送数据
 	go func() {
-		client.Write([]byte("hello from client"))
+		_, _ = client.Write([]byte("hello from client"))
 		client.Close()
 	}()
 
@@ -204,7 +204,7 @@ func TestIoCopyBidirectionalComplete(t *testing.T) {
 	assert.Equal(t, "hello from client", string(buf[:n]))
 
 	// 服务端发送响应
-	server.Write([]byte("hello from server"))
+	_, _ = server.Write([]byte("hello from server"))
 	server.Close()
 
 	// 客户端接收响应

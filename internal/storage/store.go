@@ -443,7 +443,7 @@ func (s *fileStore) RollbackSnapshot(ctx context.Context, name, snapshotID strin
 
 	// 原子交换 workspace
 	if err := atomicExchange(workspacePath, workspaceTmp); err != nil {
-		atomicExchange(upperTmp, upperPath)
+		_ = atomicExchange(upperTmp, upperPath)
 		_ = os.RemoveAll(workspaceTmp)
 		RecordSnapshotRollback("error")
 		return fmt.Errorf("atomic exchange workspace: %w", err)
@@ -724,7 +724,7 @@ func atomicExchange(source, target string) error {
 		return fmt.Errorf("rename target to tmp: %w", err)
 	}
 	if err := os.Rename(source, target); err != nil {
-		os.Rename(tmpFile, target)
+		_ = os.Rename(tmpFile, target)
 		return fmt.Errorf("rename source to target: %w", err)
 	}
 	if tmpFile != target {

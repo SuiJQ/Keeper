@@ -94,7 +94,7 @@ func (s *SOCKS5Server) handleConnection(conn net.Conn) {
 	defer conn.Close()
 
 	// 设置超时
-	conn.SetDeadline(time.Now().Add(10 * time.Second))
+	_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
 
 	// 1. 版本协商
 	buf := make([]byte, 256)
@@ -111,13 +111,13 @@ func (s *SOCKS5Server) handleConnection(conn net.Conn) {
 	// 2. 认证
 	if s.auth != nil {
 		// 返回需要用户名/密码认证
-		conn.Write([]byte{0x05, 0x02})
+		_, _ = conn.Write([]byte{0x05, 0x02})
 		s.handleUsernameAuth(conn)
 		return
 	}
 
 	// 无需认证
-	conn.Write([]byte{0x05, 0x00})
+	_, _ = conn.Write([]byte{0x05, 0x00})
 
 	// 3. 处理 CONNECT 请求
 	s.handleConnect(conn)
@@ -144,18 +144,18 @@ func (s *SOCKS5Server) handleUsernameAuth(conn net.Conn) {
 	// 验证凭据：拒绝空凭据，防止误配置导致的认证绕过
 	if s.auth.Username == "" || s.auth.Password == "" {
 		s.logger.Warn("rejecting auth due to empty credentials configuration")
-		conn.Write([]byte{0x01, 0x01}) // 认证失败
+		_, _ = conn.Write([]byte{0x01, 0x01}) // 认证失败
 		return
 	}
 
 	if username == s.auth.Username && password == s.auth.Password {
-		conn.Write([]byte{0x01, 0x00}) // 认证成功
+		_, _ = conn.Write([]byte{0x01, 0x00}) // 认证成功
 		s.handleConnect(conn)
 		return
 	}
 
 	// 认证失败
-	conn.Write([]byte{0x01, 0x01}) // 认证失败
+	_, _ = conn.Write([]byte{0x01, 0x01}) // 认证失败
 }
 
 // handleConnect 处理 CONNECT 请求
@@ -169,7 +169,7 @@ func (s *SOCKS5Server) handleConnect(conn net.Conn) {
 
 	if n < 7 || buf[1] != 0x01 {
 		// 仅支持 CONNECT 命令
-		conn.Write([]byte{0x05, 0x07, 0x00, 0x01, 0, 0, 0, 0, 0, 0}) // 命令不支持
+		_, _ = conn.Write([]byte{0x05, 0x07, 0x00, 0x01, 0, 0, 0, 0, 0, 0}) // 命令不支持
 		return
 	}
 
@@ -191,7 +191,7 @@ func (s *SOCKS5Server) handleConnect(conn net.Conn) {
 			(int(buf[16])<<8)|int(buf[17]), (int(buf[18])<<8)|int(buf[19]),
 			(int(buf[20])<<8)|int(buf[21]))
 	default:
-		conn.Write([]byte{0x05, 0x08, 0x00, 0x01, 0, 0, 0, 0, 0, 0}) // 地址类型不支持
+		_, _ = conn.Write([]byte{0x05, 0x08, 0x00, 0x01, 0, 0, 0, 0, 0, 0}) // 地址类型不支持
 		return
 	}
 
@@ -201,14 +201,14 @@ func (s *SOCKS5Server) handleConnect(conn net.Conn) {
 		s.logger.Warn("connect to target failed",
 			log.Field{Key: "target", Value: target},
 			log.Field{Key: "error", Value: err.Error()})
-		conn.Write([]byte{0x05, 0x05, 0x00, 0x01, 0, 0, 0, 0, 0, 0}) // 连接被拒绝
+		_, _ = conn.Write([]byte{0x05, 0x05, 0x00, 0x01, 0, 0, 0, 0, 0, 0}) // 连接被拒绝
 		return
 	}
 	defer targetConn.Close()
 
 	// 返回连接成功
 	localAddr := conn.LocalAddr().(*net.TCPAddr)
-	conn.Write([]byte{
+	_, _ = conn.Write([]byte{
 		0x05, 0x00, 0x00,
 		0x01,
 		byte(localAddr.IP[0]), byte(localAddr.IP[1]), byte(localAddr.IP[2]), byte(localAddr.IP[3]),
@@ -216,18 +216,18 @@ func (s *SOCKS5Server) handleConnect(conn net.Conn) {
 	})
 
 	// 清除超时
-	conn.SetDeadline(time.Time{})
+	_ = conn.SetDeadline(time.Time{})
 
 	// 双向转发
 	done := make(chan struct{}, 2)
 
 	go func() {
-		ioCopy(conn, targetConn)
+		_, _ = ioCopy(conn, targetConn)
 		done <- struct{}{}
 	}()
 
 	go func() {
-		ioCopy(targetConn, conn)
+		_, _ = ioCopy(targetConn, conn)
 		done <- struct{}{}
 	}()
 

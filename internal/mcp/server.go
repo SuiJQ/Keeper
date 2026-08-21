@@ -108,7 +108,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 	// 设置 socket 权限为 0600（仅属主可访问）
 	if err := os.Chmod(s.socketPath, 0600); err != nil {
-		s.Stop()
+		_ = s.Stop()
 		RecordMCPConnection("error")
 		return fmt.Errorf("set socket permissions: %w", err)
 	}

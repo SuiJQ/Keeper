@@ -100,7 +100,7 @@ func TestListAgents(t *testing.T) {
 
 	require.NoError(t, err)
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 
 	assert.Contains(t, output, "agent-a")
@@ -125,7 +125,7 @@ func TestInspectAgent(t *testing.T) {
 
 	require.NoError(t, err)
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 
 	assert.Contains(t, output, "NAME:       test-agent")
@@ -190,7 +190,7 @@ func TestPrintUsage(t *testing.T) {
 	os.Stdout = oldStdout
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 
 	assert.Contains(t, output, "keeper - AI Agent 轻量级 Linux 运行时环境")
@@ -211,7 +211,7 @@ func TestRecoverAgent(t *testing.T) {
 	cmd := exec.Command("sleep", "10")
 	err = cmd.Start()
 	require.NoError(t, err)
-	defer cmd.Process.Kill()
+	defer func() { _ = cmd.Process.Kill() }()
 
 	// 模拟 agent 处于错误状态
 	store, _ := storage.NewStore(cfg.Home)
@@ -219,7 +219,7 @@ func TestRecoverAgent(t *testing.T) {
 	meta.State = "fatal_bwrap_exec"
 	meta.PID = cmd.Process.Pid
 	meta.Error = "test error"
-	store.UpdateAgent(context.Background(), meta)
+	_ = store.UpdateAgent(context.Background(), meta)
 
 	// 恢复 agent
 	oldStdout := os.Stdout
@@ -252,7 +252,7 @@ func TestStopAgent(t *testing.T) {
 	meta, _ := store.GetAgent(context.Background(), "test-agent")
 	meta.State = "running"
 	meta.PID = os.Getpid()
-	store.UpdateAgent(context.Background(), meta)
+	_ = store.UpdateAgent(context.Background(), meta)
 
 	// 停止 agent
 	oldStdout := os.Stdout
@@ -418,6 +418,7 @@ func TestStartStopStatusRecover(t *testing.T) {
 	// 尝试启动（当前环境可能不支持 bwrap，会进入 fatal 状态）
 	oldStdout := os.Stdout
 	r, w, _ := os.Pipe()
+	_ = r
 	os.Stdout = w
 
 	err = startAgent(cfg, []string{"test-agent"})
@@ -451,7 +452,7 @@ func TestStartStopStatusRecover(t *testing.T) {
 	require.NoError(t, err)
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 	// 状态可能是 running 或 fatal，取决于环境
 	assert.Contains(t, output, "Agent 'test-agent':")
@@ -462,7 +463,7 @@ func TestStartStopStatusRecover(t *testing.T) {
 	// 尝试停止（如果 agent 在 running 状态）
 	meta, _ = store.GetAgent(context.Background(), "test-agent")
 	if meta.State == "running" {
-		r, w, _ = os.Pipe()
+		_, w, _ = os.Pipe()
 		os.Stdout = w
 
 		err = stopAgent(cfg, []string{"test-agent"})
@@ -472,7 +473,7 @@ func TestStartStopStatusRecover(t *testing.T) {
 		require.NoError(t, err)
 
 		// 恢复
-		r, w, _ = os.Pipe()
+		_, w, _ = os.Pipe()
 		os.Stdout = w
 
 		err = recoverAgent(cfg, []string{"test-agent"})
@@ -500,7 +501,7 @@ func TestRunAgentCommandInvalidState(t *testing.T) {
 
 	// 创建一个 agent，但手动将其状态设置为无效状态
 	store, _ := storage.NewStore(cfg.Home)
-	_, err = store.GetAgent(context.Background(), "test-agent")
+	_, _ = store.GetAgent(context.Background(), "test-agent")
 	// 忽略错误（agent 不存在）
 
 	// 直接测试错误路径
@@ -540,7 +541,7 @@ func TestMultipleAgentsLifecycle(t *testing.T) {
 
 	require.NoError(t, err)
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 
 	// 验证输出包含所有 agent
@@ -792,7 +793,7 @@ func TestHelpCommand(t *testing.T) {
 	os.Stdout = oldStdout
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 
 	assert.Contains(t, output, "keeper")

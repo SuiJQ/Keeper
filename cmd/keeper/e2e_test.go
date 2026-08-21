@@ -400,7 +400,7 @@ func TestAgentCopyEndToEndRecursive(t *testing.T) {
 
 	// 2. 创建本地源目录
 	localSrcDir := filepath.Join(tmpDir, "local_src_dir")
-	os.MkdirAll(filepath.Join(localSrcDir, "sub"), 0755)
+	_ = os.MkdirAll(filepath.Join(localSrcDir, "sub"), 0755)
 	require.NoError(t, os.WriteFile(filepath.Join(localSrcDir, "file1.txt"), []byte("file1"), 0644))
 	require.NoError(t, os.WriteFile(filepath.Join(localSrcDir, "sub", "file2.txt"), []byte("file2"), 0644))
 

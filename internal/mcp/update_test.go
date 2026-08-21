@@ -26,7 +26,7 @@ func requireNoError(t *testing.T, err error) {
 
 func TestUpdateAllowedUIDs(t *testing.T) {
 	server := newTestServer(t)
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	// 初始状态应该是空的
 	server.mu.Lock()
@@ -49,7 +49,7 @@ func TestUpdateAllowedUIDs(t *testing.T) {
 
 func TestUpdateAllowedGIDs(t *testing.T) {
 	server := newTestServer(t)
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	// 初始状态应该是空的
 	server.mu.Lock()
@@ -71,7 +71,7 @@ func TestUpdateAllowedGIDs(t *testing.T) {
 
 func TestUpdateAllowedUIDsEmpty(t *testing.T) {
 	server := newTestServer(t)
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	// 先设置一些值
 	server.UpdateAllowedUIDs([]uint32{1000})
@@ -90,7 +90,7 @@ func TestUpdateAllowedUIDsEmpty(t *testing.T) {
 
 func TestUpdateAllowedUIDsOverwrite(t *testing.T) {
 	server := newTestServer(t)
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	// 设置初始值
 	server.UpdateAllowedUIDs([]uint32{1000, 1001})
@@ -111,7 +111,7 @@ func TestUpdateAllowedUIDsOverwrite(t *testing.T) {
 
 func TestUpdateAllowedUIDsConcurrent(t *testing.T) {
 	server := newTestServer(t)
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	// 并发更新
 	done := make(chan bool, 10)

@@ -69,7 +69,7 @@ func TestGetHTTPServer(t *testing.T) {
 func TestStartMetricsServer(t *testing.T) {
 	// 先停止可能存在的全局服务器
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	StopMetricsServer(ctx)
+	_ = StopMetricsServer(ctx)
 	cancel()
 
 	err := StartMetricsServer()
@@ -81,7 +81,7 @@ func TestStartMetricsServer(t *testing.T) {
 
 	// 清理
 	ctx, cancel = context.WithTimeout(context.Background(), 2*time.Second)
-	StopMetricsServer(ctx)
+	_ = StopMetricsServer(ctx)
 	cancel()
 }
 
@@ -89,7 +89,7 @@ func TestStartMetricsServer(t *testing.T) {
 func TestMetricsEndpoint(t *testing.T) {
 	// 先停止可能存在的全局服务器
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	StopMetricsServer(ctx)
+	_ = StopMetricsServer(ctx)
 	cancel()
 
 	// 注册一些测试指标
@@ -123,6 +123,6 @@ func TestMetricsEndpoint(t *testing.T) {
 
 	// 清理
 	ctx, cancel = context.WithTimeout(context.Background(), 2*time.Second)
-	StopMetricsServer(ctx)
+	_ = StopMetricsServer(ctx)
 	cancel()
 }

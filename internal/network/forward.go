@@ -161,13 +161,13 @@ func ioCopy(dst, src net.Conn) (int64, error) {
 
 	var total int64
 	for {
-		src.SetReadDeadline(time.Now().Add(30 * time.Second))
+		_ = src.SetReadDeadline(time.Now().Add(30 * time.Second))
 		n, err := src.Read(buf)
 		if err != nil {
 			return total, err
 		}
 		total += int64(n)
-		dst.SetWriteDeadline(time.Now().Add(30 * time.Second))
+		_ = dst.SetWriteDeadline(time.Now().Add(30 * time.Second))
 		if _, err := dst.Write(buf[:n]); err != nil {
 			return total, err
 		}

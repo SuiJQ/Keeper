@@ -361,7 +361,7 @@ func (r *Registry) PrometheusFormat() string {
 	for name, summary := range r.summaries {
 		output += fmt.Sprintf("# HELP %s %s\n", name, summary.help)
 		output += fmt.Sprintf("# TYPE %s summary\n", name)
-		for quantile, _ := range summary.objectives {
+		for quantile := range summary.objectives {
 			labels := formatLabels(summary.labels, summary.labelNames)
 			labels = fmt.Sprintf("%s,quantile=\"%g\"", labels, quantile)
 			value := calculateQuantile(summary.values, quantile)

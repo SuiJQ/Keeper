@@ -185,7 +185,7 @@ func TestIsProcessAlive(t *testing.T) {
 	cmd := exec.Command("sleep", "10")
 	err := cmd.Start()
 	require.NoError(t, err)
-	defer cmd.Process.Kill()
+	defer func() { _ = cmd.Process.Kill() }()
 
 	pid := cmd.Process.Pid
 
@@ -233,7 +233,7 @@ func TestAgentInfoSignalProcess(t *testing.T) {
 	cmd := exec.Command("sleep", "10")
 	err := cmd.Start()
 	require.NoError(t, err)
-	defer cmd.Process.Kill()
+	defer func() { _ = cmd.Process.Kill() }()
 
 	agent := &AgentInfo{
 		Name: "test",

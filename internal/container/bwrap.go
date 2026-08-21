@@ -22,7 +22,6 @@ import (
 // BwrapContainer bwrap 容器运行时实现
 type BwrapContainer struct {
 	name          string
-	pid           int
 	cmd           *exec.Cmd
 	status        ContainerStatus
 	logger        log.Logger

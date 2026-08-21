@@ -3,7 +3,6 @@ package seccomp
 
 import (
 	"encoding/binary"
-	"fmt"
 )
 
 // BPFInstruction Seccomp BPF 指令（8 字节）
@@ -449,9 +448,6 @@ func generateWhitelistBPF(prog *BPFProgram, allowed map[uint32]bool, denied map[
 		// 当前指令索引 = 1 + i
 		// 目标指令索引 = 1 + len(syscallNums) + 1 (ALLOW 标签)
 		jumpOffset := uint8(len(syscallNums) - i + 1)
-		if jumpOffset > 255 {
-			return nil, fmt.Errorf("too many syscalls for BPF jump encoding")
-		}
 		prog.Instructions = append(prog.Instructions, BPFInstruction{
 			Opcode: BPF_JMP | BPF_JEQ | BPF_K,
 			Jt:     jumpOffset,

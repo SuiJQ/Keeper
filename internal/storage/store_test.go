@@ -304,13 +304,13 @@ func TestPruneCache(t *testing.T) {
 
 	// 创建缓存目录
 	cacheDir := filepath.Join(tmpDir, "cache", "rootfs")
-	os.MkdirAll(filepath.Join(cacheDir, "used-cache"), 0700)
-	os.MkdirAll(filepath.Join(cacheDir, "unused-cache"), 0700)
+	_ = os.MkdirAll(filepath.Join(cacheDir, "used-cache"), 0700)
+	_ = os.MkdirAll(filepath.Join(cacheDir, "unused-cache"), 0700)
 
 	// 设置 agent-a 使用 used-cache
 	meta, _ := store.GetAgent(ctx, "agent-a")
 	meta.CacheKey = "used-cache"
-	store.UpdateAgent(ctx, meta)
+	_ = store.UpdateAgent(ctx, meta)
 
 	// Prune
 	deleted, err := store.PruneCache(ctx, false)
@@ -640,7 +640,7 @@ func TestListAgentsInvalidDir(t *testing.T) {
 
 	// 创建无效的 agent 目录（没有 meta.json）
 	invalidDir := filepath.Join(tmpDir, "agents", "invalid-agent")
-	os.MkdirAll(invalidDir, 0755)
+	_ = os.MkdirAll(invalidDir, 0755)
 
 	ctx := context.Background()
 	agents, err := store.ListAgents(ctx)
@@ -679,8 +679,8 @@ func TestRecreateWorkDir(t *testing.T) {
 	workDir := filepath.Join(tmpDir, "work")
 
 	// 创建 work 目录
-	os.MkdirAll(workDir, 0755)
-	os.WriteFile(filepath.Join(workDir, "test.txt"), []byte("test"), 0644)
+	_ = os.MkdirAll(workDir, 0755)
+	_ = os.WriteFile(filepath.Join(workDir, "test.txt"), []byte("test"), 0644)
 
 	// 重建 work 目录
 	err := recreateWorkDir(workDir)
@@ -702,9 +702,9 @@ func TestRecreateWorkDirExistingPurge(t *testing.T) {
 	purgeDir := workDir + ".purge"
 
 	// 创建 work 目录和 purge 目录
-	os.MkdirAll(workDir, 0755)
-	os.MkdirAll(purgeDir, 0755)
-	os.WriteFile(filepath.Join(workDir, "test.txt"), []byte("test"), 0644)
+	_ = os.MkdirAll(workDir, 0755)
+	_ = os.MkdirAll(purgeDir, 0755)
+	_ = os.WriteFile(filepath.Join(workDir, "test.txt"), []byte("test"), 0644)
 
 	// 重建 work 目录（purge 目录已存在）
 	err := recreateWorkDir(workDir)
@@ -775,7 +775,7 @@ func TestDecompressCopyInvalidFile(t *testing.T) {
 
 	// 创建无效的 tar.gz 文件
 	srcFile := filepath.Join(tmpDir, "invalid.tar.gz")
-	os.WriteFile(srcFile, []byte("not a valid tar.gz"), 0644)
+	_ = os.WriteFile(srcFile, []byte("not a valid tar.gz"), 0644)
 
 	dstDir := filepath.Join(tmpDir, "dst")
 	err := decompressCopy(srcFile, dstDir)
@@ -794,7 +794,7 @@ func TestPruneCacheDryRun(t *testing.T) {
 
 	// 创建缓存目录
 	cacheDir := filepath.Join(tmpDir, "cache", "rootfs")
-	os.MkdirAll(filepath.Join(cacheDir, "unused-cache"), 0700)
+	_ = os.MkdirAll(filepath.Join(cacheDir, "unused-cache"), 0700)
 
 	// Prune dry run
 	deleted, err := store.PruneCache(ctx, true)

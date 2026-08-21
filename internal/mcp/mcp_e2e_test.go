@@ -42,7 +42,7 @@ func TestMCPEndToEndFullFlow(t *testing.T) {
 	ctx := context.Background()
 	err = server.Start(ctx)
 	require.NoError(t, err)
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	// 连接 Unix Socket
 	conn, err := net.Dial("unix", cfg.SocketPath)
@@ -134,7 +134,7 @@ func TestMCPEndToEndAuth(t *testing.T) {
 	ctx := context.Background()
 	err = server.Start(ctx)
 	require.NoError(t, err)
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	// 连接 Unix Socket（当前进程 UID/GID 不在白名单中）
 	conn, err := net.Dial("unix", cfg.SocketPath)
@@ -259,7 +259,7 @@ func TestMCPEndToEndInvalidMethod(t *testing.T) {
 	ctx := context.Background()
 	err = server.Start(ctx)
 	require.NoError(t, err)
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	conn, err := net.Dial("unix", cfg.SocketPath)
 	require.NoError(t, err)
@@ -327,7 +327,7 @@ func TestMCPEndToEndToolExecution(t *testing.T) {
 	ctx := context.Background()
 	err = server.Start(ctx)
 	require.NoError(t, err)
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	conn, err := net.Dial("unix", cfg.SocketPath)
 	require.NoError(t, err)
@@ -438,7 +438,7 @@ func TestMCPEndToEndToolExecutionWithRecursive(t *testing.T) {
 	ctx := context.Background()
 	err = server.Start(ctx)
 	require.NoError(t, err)
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	conn, err := net.Dial("unix", cfg.SocketPath)
 	require.NoError(t, err)

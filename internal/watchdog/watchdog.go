@@ -201,11 +201,7 @@ func (w *Watchdog) checkAgent(info *AgentInfo) {
 			log.Field{Key: "agent", Value: info.Name},
 			log.Field{Key: "pid", Value: info.PID})
 
-		if err := w.RecoverDState(info.Name); err != nil {
-			w.logger.Error("D state recovery failed",
-				log.Field{Key: "agent", Value: info.Name},
-				log.Field{Key: "error", Value: err})
-		}
+		_ = w.RecoverDState(info.Name)
 
 		w.UnregisterAgent(info.Name)
 		RecordAgentDState(info.Name)
@@ -354,9 +350,3 @@ func (a *AgentInfo) signalProcess(sig os.Signal) error {
 
 	return proc.Signal(sig)
 }
-
-// 以下为辅助变量（便于测试）
-var osReadFile = os.ReadFile
-var bufioNewScanner = bufio.NewScanner
-var stringsNewReader = strings.NewReader
-var stringsFields = strings.Fields

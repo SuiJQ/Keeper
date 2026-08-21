@@ -135,7 +135,7 @@ func TestPortForwardRoundTrip(t *testing.T) {
 			buf := make([]byte, 1024)
 			n, _ := conn.Read(buf)
 			if n > 0 {
-				conn.Write(buf[:n]) // echo back
+				_, _ = conn.Write(buf[:n]) // echo back
 			}
 		}
 		close(serverReady)
@@ -172,7 +172,7 @@ func TestPortForwardRoundTrip(t *testing.T) {
 
 	// 读取 echo 响应
 	buf := make([]byte, 1024)
-	clientConn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_ = clientConn.SetReadDeadline(time.Now().Add(2 * time.Second))
 	n, err := clientConn.Read(buf)
 	require.NoError(t, err)
 	assert.Equal(t, message, buf[:n])
