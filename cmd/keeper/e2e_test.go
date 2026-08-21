@@ -518,4 +518,39 @@ func TestAgentDestroyEndToEnd(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// TestAgentStatusEndToEnd 测试 status 命令端到端
+func TestAgentStatusEndToEnd(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	agentName := "status-agent"
+
+	// 1. 创建 Agent
+	err = createAgent(cfg, []string{agentName})
+	require.NoError(t, err)
+
+	// 2. 查询状态（created）
+	err = statusAgent(cfg, []string{agentName})
+	require.NoError(t, err)
+
+	// 3. 启动 Agent（可能失败，忽略）
+	_ = startAgent(cfg, []string{agentName})
+
+	// 4. 查询状态（可能是 running 或 fatal）
+	err = statusAgent(cfg, []string{agentName})
+	require.NoError(t, err)
+
+	// 5. 查询不存在的 Agent（应该返回错误）
+	err = statusAgent(cfg, []string{"nonexistent"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
+
+	// 6. 销毁 Agent
+	err = destroyAgent(cfg, []string{agentName})
+	require.NoError(t, err)
+}
+
 
