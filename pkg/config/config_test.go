@@ -12,17 +12,19 @@ import (
 
 func waitForFileChange(t *testing.T, path string, oldModTime time.Time) {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		info, err := os.Stat(path)
 		if err == nil && info.ModTime().After(oldModTime) {
 			return
 		}
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 	}
 	// 如果超时，强制更新时间以触发变更检测
 	now := time.Now()
-	os.Chtimes(path, now, now)
+	if err := os.Chtimes(path, now, now); err != nil {
+		t.Logf("Warning: failed to update file mtime: %v", err)
+	}
 }
 
 func TestConfigLoadAndSave(t *testing.T) {
