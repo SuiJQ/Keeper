@@ -40,11 +40,11 @@ jobs:
       - name: Verify Go installation
         run: go version
 
-      - name: Run unit tests
-        run: go test ./...
-
       - name: Build binary
         run: go build -o bin/keeper ./cmd/keeper
+
+      - name: Run unit tests
+        run: go test ./...
 
       - name: Check binary size
         run: |
