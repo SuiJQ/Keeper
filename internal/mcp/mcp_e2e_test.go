@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -288,4 +289,252 @@ func TestMCPEndToEndInvalidMethod(t *testing.T) {
 	assert.NotNil(t, resp.Error)
 	assert.Equal(t, -32601, resp.Error.Code)
 	assert.Contains(t, resp.Error.Message, "method not found")
+}
+
+// TestMCPEndToEndToolExecution 测试 MCP Server 实际工具执行（调用 keeper CLI）
+func TestMCPEndToEndToolExecution(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "keeper-mcp-exec-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	// 创建 KEEPER_HOME 目录和配置文件
+	keeperHome := filepath.Join(tmpDir, "keeper-home")
+	require.NoError(t, os.MkdirAll(keeperHome, 0755))
+	configFile := filepath.Join(keeperHome, "config.json")
+	require.NoError(t, os.WriteFile(configFile, []byte(`{"log_level":"info"}`), 0644))
+
+	// 设置环境变量
+	os.Setenv("KEEPER_HOME", keeperHome)
+	defer os.Unsetenv("KEEPER_HOME")
+
+	// 创建 storage（供 MCP Server 内部使用）
+	store, err := storage.NewStore(tmpDir)
+	require.NoError(t, err)
+
+	// 将项目 bin 目录加入 PATH，以便 findKeeperBinary 能找到 keeper 二进制
+	projectBin := filepath.Join(getProjectRoot(), "bin")
+	originalPath := os.Getenv("PATH")
+	os.Setenv("PATH", projectBin+string(os.PathListSeparator)+originalPath)
+	defer os.Setenv("PATH", originalPath)
+
+	cfg := ServerConfig{
+		SocketPath:  filepath.Join(tmpDir, "mcp.sock"),
+		AgentName:   "test-agent",
+		Store:       store,
+		AllowedUIDs: []uint32{0, uint32(os.Getuid())},
+		AllowedGIDs: []uint32{0, uint32(os.Getgid())},
+	}
+
+	server, err := NewServer(cfg, log.New(os.Stderr))
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	err = server.Start(ctx)
+	require.NoError(t, err)
+	defer server.Stop()
+
+	conn, err := net.Dial("unix", cfg.SocketPath)
+	require.NoError(t, err)
+	defer conn.Close()
+
+	encoder := json.NewEncoder(conn)
+	decoder := json.NewDecoder(conn)
+
+	// 辅助函数：发送请求并接收响应
+	sendRequest := func(req Request) Response {
+		err := encoder.Encode(req)
+		require.NoError(t, err)
+		var resp Response
+		err = decoder.Decode(&resp)
+		require.NoError(t, err)
+		return resp
+	}
+
+	// 1. 初始化
+	initResp := sendRequest(Request{
+		JSONRPC: "2.0",
+		ID:      float64(1),
+		Method:  "initialize",
+		Params:  map[string]interface{}{},
+	})
+	assert.Nil(t, initResp.Error)
+
+	// 2. 创建 Agent（通过 MCP 调用 keeper CLI）
+	createResp := sendRequest(Request{
+		JSONRPC: "2.0",
+		ID:      float64(2),
+		Method:  "tools/call",
+		Params: map[string]interface{}{
+			"name":      "keeper.create",
+			"arguments": map[string]interface{}{"name": "mcp-test-agent"},
+		},
+	})
+	assert.Nil(t, createResp.Error)
+	createResult := createResp.Result["content"].([]interface{})[0].(map[string]interface{})
+	assert.Contains(t, createResult["text"], "created")
+
+	// 3. 列出 Agent（通过 MCP 调用 keeper CLI）
+	listResp := sendRequest(Request{
+		JSONRPC: "2.0",
+		ID:      float64(3),
+		Method:  "tools/call",
+		Params: map[string]interface{}{
+			"name":      "keeper.list",
+			"arguments": map[string]interface{}{},
+		},
+	})
+	assert.Nil(t, listResp.Error)
+	listResult := listResp.Result["content"].([]interface{})[0].(map[string]interface{})
+	assert.Contains(t, listResult["text"], "mcp-test-agent")
+
+	// 4. 查看 Agent 详情（通过 MCP 调用 keeper CLI）
+	inspectResp := sendRequest(Request{
+		JSONRPC: "2.0",
+		ID:      float64(4),
+		Method:  "tools/call",
+		Params: map[string]interface{}{
+			"name":      "keeper.inspect",
+			"arguments": map[string]interface{}{"name": "mcp-test-agent"},
+		},
+	})
+	assert.Nil(t, inspectResp.Error)
+	inspectResult := inspectResp.Result["content"].([]interface{})[0].(map[string]interface{})
+	assert.Contains(t, inspectResult["text"], "mcp-test-agent")
+}
+
+// TestMCPEndToEndToolExecutionWithRecursive 测试 MCP cp 工具递归复制
+func TestMCPEndToEndToolExecutionWithRecursive(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "keeper-mcp-cp-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	// 创建 KEEPER_HOME 目录和配置文件
+	keeperHome := filepath.Join(tmpDir, "keeper-home")
+	require.NoError(t, os.MkdirAll(keeperHome, 0755))
+	configFile := filepath.Join(keeperHome, "config.json")
+	require.NoError(t, os.WriteFile(configFile, []byte(`{"log_level":"info"}`), 0644))
+
+	// 设置环境变量
+	os.Setenv("KEEPER_HOME", keeperHome)
+	defer os.Unsetenv("KEEPER_HOME")
+
+	// 创建 storage
+	store, err := storage.NewStore(tmpDir)
+	require.NoError(t, err)
+
+	// 将项目 bin 目录加入 PATH，以便 findKeeperBinary 能找到 keeper 二进制
+	projectBin := filepath.Join(getProjectRoot(), "bin")
+	originalPath := os.Getenv("PATH")
+	os.Setenv("PATH", projectBin+string(os.PathListSeparator)+originalPath)
+	defer os.Setenv("PATH", originalPath)
+
+	cfg := ServerConfig{
+		SocketPath:  filepath.Join(tmpDir, "mcp.sock"),
+		AgentName:   "cp-test-agent",
+		Store:       store,
+		AllowedUIDs: []uint32{0, uint32(os.Getuid())},
+		AllowedGIDs: []uint32{0, uint32(os.Getgid())},
+	}
+
+	server, err := NewServer(cfg, log.New(os.Stderr))
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	err = server.Start(ctx)
+	require.NoError(t, err)
+	defer server.Stop()
+
+	conn, err := net.Dial("unix", cfg.SocketPath)
+	require.NoError(t, err)
+	defer conn.Close()
+
+	encoder := json.NewEncoder(conn)
+	decoder := json.NewDecoder(conn)
+
+	// 辅助函数
+	sendRequest := func(req Request) Response {
+		err := encoder.Encode(req)
+		require.NoError(t, err)
+		var resp Response
+		err = decoder.Decode(&resp)
+		require.NoError(t, err)
+		return resp
+	}
+
+	// 1. 初始化
+	sendRequest(Request{
+		JSONRPC: "2.0",
+		ID:      float64(1),
+		Method:  "initialize",
+		Params:  map[string]interface{}{},
+	})
+
+	// 2. 创建 Agent
+	createResp := sendRequest(Request{
+		JSONRPC: "2.0",
+		ID:      float64(2),
+		Method:  "tools/call",
+		Params: map[string]interface{}{
+			"name":      "keeper.create",
+			"arguments": map[string]interface{}{"name": "cp-mcp-agent"},
+		},
+	})
+	assert.Nil(t, createResp.Error)
+
+	// 3. 创建本地源文件
+	localSrcDir := filepath.Join(tmpDir, "src")
+	require.NoError(t, os.MkdirAll(localSrcDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(localSrcDir, "file.txt"), []byte("hello mcp"), 0644))
+
+	// 4. 递归复制目录到 Agent workspace（通过 MCP）
+	cpResp := sendRequest(Request{
+		JSONRPC: "2.0",
+		ID:      float64(3),
+		Method:  "tools/call",
+		Params: map[string]interface{}{
+			"name":      "keeper.cp",
+			"arguments": map[string]interface{}{"source": localSrcDir, "destination": "cp-mcp-agent:/dest", "recursive": true},
+		},
+	})
+	assert.Nil(t, cpResp.Error)
+	// cp 命令成功时无输出，content 应为空文本
+	cpContent := cpResp.Result["content"].([]interface{})
+	assert.NotEmpty(t, cpContent)
+}
+
+// getProjectRoot 从当前文件路径推导项目根目录
+func getProjectRoot() string {
+	// 方法1: 使用 runtime.Caller
+	_, filename, _, ok := runtime.Caller(0)
+	if ok {
+		dir := filepath.Dir(filename)
+		// 上三级: internal/mcp -> internal -> <root>
+		for i := 0; i < 3; i++ {
+			dir = filepath.Dir(dir)
+		}
+		// 验证 go.mod 存在
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir
+		}
+	}
+
+	// 方法2: 使用当前工作目录
+	wd, err := os.Getwd()
+	if err == nil {
+		// 向上查找 go.mod
+		for {
+			if _, err := os.Stat(filepath.Join(wd, "go.mod")); err == nil {
+				return wd
+			}
+			parent := filepath.Dir(wd)
+			if parent == wd {
+				break
+			}
+			wd = parent
+		}
+	}
+
+	// fallback: 返回当前目录
+	wd, _ = os.Getwd()
+	return wd
 }
