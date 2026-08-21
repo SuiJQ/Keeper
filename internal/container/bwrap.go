@@ -21,16 +21,16 @@ import (
 
 // BwrapContainer bwrap 容器运行时实现
 type BwrapContainer struct {
-	name         string
-	pid          int
-	cmd          *exec.Cmd
-	status       ContainerStatus
-	logger       log.Logger
-	seccompStrat SeccompStrategy
-	overlayStrat OverlayStrategy
-	networkStrat NetworkStrategy
+	name          string
+	pid           int
+	cmd           *exec.Cmd
+	status        ContainerStatus
+	logger        log.Logger
+	seccompStrat  SeccompStrategy
+	overlayStrat  OverlayStrategy
+	networkStrat  NetworkStrategy
 	resourceStrat ResourceStrategy
-	logStrat     LogStrategy
+	logStrat      LogStrategy
 }
 
 // SetSeccompStrategy 设置 Seccomp 策略

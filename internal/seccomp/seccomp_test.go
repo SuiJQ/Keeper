@@ -323,7 +323,7 @@ func TestNewWhitelistFilter(t *testing.T) {
 	require.NotNil(t, filter)
 	assert.NotEmpty(t, filter.AllowList)
 	assert.Equal(t, RetErrno, filter.DefaultAction) // 白名单默认返回 Errno
-	
+
 	// 验证包含常用系统调用
 	assert.Contains(t, filter.AllowList, "read")
 	assert.Contains(t, filter.AllowList, "write")
@@ -337,7 +337,7 @@ func TestNewBlacklistFilter(t *testing.T) {
 	require.NotNil(t, filter)
 	assert.NotEmpty(t, filter.DenyList)
 	assert.Equal(t, RetAllow, filter.DefaultAction)
-	
+
 	// 验证包含危险系统调用
 	assert.Contains(t, filter.DenyList, "reboot")
 	assert.Contains(t, filter.DenyList, "mount")

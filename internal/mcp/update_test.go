@@ -27,17 +27,17 @@ func requireNoError(t *testing.T, err error) {
 func TestUpdateAllowedUIDs(t *testing.T) {
 	server := newTestServer(t)
 	defer server.Stop()
-	
+
 	// 初始状态应该是空的
 	server.mu.Lock()
 	initialUIDs := server.allowedUIDs
 	server.mu.Unlock()
 	assert.Empty(t, initialUIDs)
-	
+
 	// 更新 UID 白名单
 	uids := []uint32{1000, 1001, 1002}
 	server.UpdateAllowedUIDs(uids)
-	
+
 	// 验证更新结果
 	server.mu.Lock()
 	defer server.mu.Unlock()
@@ -50,17 +50,17 @@ func TestUpdateAllowedUIDs(t *testing.T) {
 func TestUpdateAllowedGIDs(t *testing.T) {
 	server := newTestServer(t)
 	defer server.Stop()
-	
+
 	// 初始状态应该是空的
 	server.mu.Lock()
 	initialGIDs := server.allowedGIDs
 	server.mu.Unlock()
 	assert.Empty(t, initialGIDs)
-	
+
 	// 更新 GID 白名单
 	gids := []uint32{1000, 1001}
 	server.UpdateAllowedGIDs(gids)
-	
+
 	// 验证更新结果
 	server.mu.Lock()
 	defer server.mu.Unlock()
@@ -72,15 +72,15 @@ func TestUpdateAllowedGIDs(t *testing.T) {
 func TestUpdateAllowedUIDsEmpty(t *testing.T) {
 	server := newTestServer(t)
 	defer server.Stop()
-	
+
 	// 先设置一些值
 	server.UpdateAllowedUIDs([]uint32{1000})
 	server.UpdateAllowedGIDs([]uint32{1000})
-	
+
 	// 更新为空列表
 	server.UpdateAllowedUIDs([]uint32{})
 	server.UpdateAllowedGIDs([]uint32{})
-	
+
 	// 验证清空结果
 	server.mu.Lock()
 	defer server.mu.Unlock()
@@ -91,13 +91,13 @@ func TestUpdateAllowedUIDsEmpty(t *testing.T) {
 func TestUpdateAllowedUIDsOverwrite(t *testing.T) {
 	server := newTestServer(t)
 	defer server.Stop()
-	
+
 	// 设置初始值
 	server.UpdateAllowedUIDs([]uint32{1000, 1001})
-	
+
 	// 覆盖为新值
 	server.UpdateAllowedUIDs([]uint32{2000, 2001, 2002})
-	
+
 	// 验证旧值被清除
 	server.mu.Lock()
 	defer server.mu.Unlock()
@@ -112,7 +112,7 @@ func TestUpdateAllowedUIDsOverwrite(t *testing.T) {
 func TestUpdateAllowedUIDsConcurrent(t *testing.T) {
 	server := newTestServer(t)
 	defer server.Stop()
-	
+
 	// 并发更新
 	done := make(chan bool, 10)
 	for i := 0; i < 10; i++ {
@@ -121,7 +121,7 @@ func TestUpdateAllowedUIDsConcurrent(t *testing.T) {
 			done <- true
 		}(uint32(i))
 	}
-	
+
 	for i := 0; i < 10; i++ {
 		<-done
 	}

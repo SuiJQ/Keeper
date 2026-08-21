@@ -204,10 +204,10 @@ func TestWatchdogUpdateTimeout(t *testing.T) {
 		Timeout:       1 * time.Minute,
 		CheckInterval: 10 * time.Second,
 	}, log.Global())
-	
+
 	// 更新超时时间
 	wd.UpdateTimeout(2 * time.Minute)
-	
+
 	// 验证超时时间已更新
 	// 注意：timeout 字段是私有的，我们通过日志或行为验证
 	// 这里只是验证不会 panic
@@ -219,10 +219,10 @@ func TestWatchdogUpdateCheckInterval(t *testing.T) {
 		Timeout:       1 * time.Minute,
 		CheckInterval: 10 * time.Second,
 	}, log.Global())
-	
+
 	// 更新检查间隔
 	wd.UpdateCheckInterval(5 * time.Second)
-	
+
 	// 验证检查间隔已更新
 	// 这里只是验证不会 panic
 }
@@ -234,16 +234,16 @@ func TestAgentInfoSignalProcess(t *testing.T) {
 	err := cmd.Start()
 	require.NoError(t, err)
 	defer cmd.Process.Kill()
-	
+
 	agent := &AgentInfo{
 		Name: "test",
 		PID:  cmd.Process.Pid,
 	}
-	
+
 	// 发送 SIGTERM 信号
 	err = agent.signalProcess(syscall.SIGTERM)
 	assert.NoError(t, err)
-	
+
 	// 等待进程结束
 	_, err = cmd.Process.Wait()
 	assert.NoError(t, err)
@@ -255,7 +255,7 @@ func TestAgentInfoSignalProcessInvalidPID(t *testing.T) {
 		Name: "test",
 		PID:  -1,
 	}
-	
+
 	err := agent.signalProcess(syscall.SIGTERM)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid pid")
@@ -267,7 +267,7 @@ func TestWatchdogConcurrentUpdate(t *testing.T) {
 		Timeout:       1 * time.Minute,
 		CheckInterval: 10 * time.Second,
 	}, log.Global())
-	
+
 	done := make(chan bool, 10)
 	for i := 0; i < 10; i++ {
 		go func(id int) {
@@ -276,7 +276,7 @@ func TestWatchdogConcurrentUpdate(t *testing.T) {
 			done <- true
 		}(i)
 	}
-	
+
 	for i := 0; i < 10; i++ {
 		<-done
 	}

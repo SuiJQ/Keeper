@@ -515,32 +515,32 @@ func TestMultipleAgentsLifecycle(t *testing.T) {
 	require.NoError(t, err)
 
 	agentNames := []string{"agent1", "agent2", "agent3"}
-	
+
 	// 批量创建 agent
 	for _, name := range agentNames {
 		err := createAgent(cfg, []string{name})
 		require.NoError(t, err)
 	}
-	
+
 	// 验证所有 agent 都已创建
 	for _, name := range agentNames {
 		agentDir := filepath.Join(tmpDir, "agents", name)
 		assert.DirExists(t, agentDir)
 		assert.FileExists(t, filepath.Join(agentDir, "meta.json"))
 	}
-	
+
 	// 列出所有 agent
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 	err = listAgents(cfg, []string{})
 	w.Close()
 	os.Stdout = os.Stderr
-	
+
 	require.NoError(t, err)
 	var buf bytes.Buffer
 	buf.ReadFrom(r)
 	output := buf.String()
-	
+
 	// 验证输出包含所有 agent
 	for _, name := range agentNames {
 		assert.Contains(t, output, name)
@@ -555,25 +555,25 @@ func TestForkAgentLifecycle(t *testing.T) {
 
 	// 创建源 agent
 	require.NoError(t, createAgent(cfg, []string{"source"}))
-	
+
 	// 向源 agent 写入数据
 	workspace := filepath.Join(tmpDir, "agents", "source", "workspace")
 	require.NoError(t, os.MkdirAll(workspace, 0755))
 	require.NoError(t, os.WriteFile(filepath.Join(workspace, "data.txt"), []byte("source data"), 0644))
-	
+
 	// Fork
 	require.NoError(t, forkAgent(cfg, []string{"source", "forked"}))
-	
+
 	// 验证 fork 后的 agent
 	forkedDir := filepath.Join(tmpDir, "agents", "forked")
 	assert.DirExists(t, forkedDir)
-	
+
 	// 验证状态为 created
 	store, _ := storage.NewStore(cfg.Home)
 	meta, err := store.GetAgent(context.Background(), "forked")
 	require.NoError(t, err)
 	assert.Equal(t, "created", meta.State)
-	
+
 	// 验证 pgid 为空（fork 时已清理）
 	assert.Empty(t, meta.PGID)
 }
@@ -586,16 +586,16 @@ func TestCopyFileAgentPath(t *testing.T) {
 
 	// 创建源 agent
 	require.NoError(t, createAgent(cfg, []string{"source"}))
-	
+
 	// 写入文件到本地临时目录
 	localSrc := filepath.Join(tmpDir, "local_src.txt")
 	require.NoError(t, os.WriteFile(localSrc, []byte("hello"), 0644))
-	
+
 	// 复制文件到目标 agent
 	require.NoError(t, createAgent(cfg, []string{"target"}))
 	err = copyFile(cfg, []string{localSrc, "target:/copied.txt"})
 	require.NoError(t, err)
-	
+
 	// 验证文件已复制
 	targetFile := filepath.Join(tmpDir, "agents", "target", "workspace", "copied.txt")
 	assert.FileExists(t, targetFile)
@@ -618,7 +618,7 @@ func TestInvalidNameValidation(t *testing.T) {
 		"start name", // 包含空格
 		"this-name-is-way-too-long-to-be-valid-because-it-exceeds-the-maximum-length-of-32-chars", // 太长
 	}
-	
+
 	for _, name := range invalidNames {
 		err := createAgent(cfg, []string{name})
 		assert.Error(t, err, "name '%s' should be invalid", name)
@@ -629,7 +629,7 @@ func TestInvalidNameValidation(t *testing.T) {
 func TestRunAgentCommandUsage(t *testing.T) {
 	tmpDir, cleanup := setupTestConfig(t)
 	defer cleanup()
-	
+
 	cfg, err := config.Load(tmpDir)
 	require.NoError(t, err)
 
@@ -643,7 +643,7 @@ func TestRunAgentCommandUsage(t *testing.T) {
 func TestInspectAgentNotFound(t *testing.T) {
 	tmpDir, cleanup := setupTestConfig(t)
 	defer cleanup()
-	
+
 	cfg, err := config.Load(tmpDir)
 	require.NoError(t, err)
 
@@ -651,12 +651,12 @@ func TestInspectAgentNotFound(t *testing.T) {
 	_, w, _ := os.Pipe()
 	oldStdout := os.Stdout
 	os.Stdout = w
-	
+
 	err = inspectAgent(cfg, []string{"nonexistent"})
-	
+
 	w.Close()
 	os.Stdout = oldStdout
-	
+
 	assert.Error(t, err)
 	// 错误信息可能被包装过
 	assert.Contains(t, err.Error(), "nonexistent")
@@ -666,7 +666,7 @@ func TestInspectAgentNotFound(t *testing.T) {
 func TestStopAgentNotFound(t *testing.T) {
 	tmpDir, cleanup := setupTestConfig(t)
 	defer cleanup()
-	
+
 	cfg, err := config.Load(tmpDir)
 	require.NoError(t, err)
 
@@ -681,7 +681,7 @@ func TestStopAgentNotFound(t *testing.T) {
 func TestDestroyAgentNotFound(t *testing.T) {
 	tmpDir, cleanup := setupTestConfig(t)
 	defer cleanup()
-	
+
 	cfg, err := config.Load(tmpDir)
 	require.NoError(t, err)
 
@@ -696,7 +696,7 @@ func TestDestroyAgentNotFound(t *testing.T) {
 func TestSnapshotAgentNotFound(t *testing.T) {
 	tmpDir, cleanup := setupTestConfig(t)
 	defer cleanup()
-	
+
 	cfg, err := config.Load(tmpDir)
 	require.NoError(t, err)
 
@@ -711,7 +711,7 @@ func TestSnapshotAgentNotFound(t *testing.T) {
 func TestRollbackAgentNotFound(t *testing.T) {
 	tmpDir, cleanup := setupTestConfig(t)
 	defer cleanup()
-	
+
 	cfg, err := config.Load(tmpDir)
 	require.NoError(t, err)
 
@@ -726,7 +726,7 @@ func TestRollbackAgentNotFound(t *testing.T) {
 func TestRecoverAgentNotFound(t *testing.T) {
 	tmpDir, cleanup := setupTestConfig(t)
 	defer cleanup()
-	
+
 	cfg, err := config.Load(tmpDir)
 	require.NoError(t, err)
 
@@ -741,7 +741,7 @@ func TestRecoverAgentNotFound(t *testing.T) {
 func TestStatusAgentNotFound(t *testing.T) {
 	tmpDir, cleanup := setupTestConfig(t)
 	defer cleanup()
-	
+
 	cfg, err := config.Load(tmpDir)
 	require.NoError(t, err)
 
@@ -761,7 +761,7 @@ func TestMetricsCommand(t *testing.T) {
 
 	// 获取 Prometheus 格式输出
 	output := metrics.PrometheusFormat()
-	
+
 	// 验证输出包含 Prometheus 格式
 	assert.Contains(t, output, "# HELP")
 	assert.Contains(t, output, "# TYPE")

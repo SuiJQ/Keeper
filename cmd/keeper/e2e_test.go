@@ -17,7 +17,7 @@ import (
 func TestAgentLifecycleEndToEnd(t *testing.T) {
 	tmpDir, cleanup := setupTestConfig(t)
 	defer cleanup()
-	
+
 	cfg, err := config.Load(tmpDir)
 	require.NoError(t, err)
 
@@ -99,7 +99,7 @@ func TestAgentLifecycleEndToEnd(t *testing.T) {
 func TestAgentForkEndToEnd(t *testing.T) {
 	tmpDir, cleanup := setupTestConfig(t)
 	defer cleanup()
-	
+
 	cfg, err := config.Load(tmpDir)
 	require.NoError(t, err)
 
@@ -149,7 +149,7 @@ func TestAgentForkEndToEnd(t *testing.T) {
 func TestAgentSnapshotRollbackEndToEnd(t *testing.T) {
 	tmpDir, cleanup := setupTestConfig(t)
 	defer cleanup()
-	
+
 	cfg, err := config.Load(tmpDir)
 	require.NoError(t, err)
 
@@ -189,7 +189,7 @@ func TestAgentSnapshotRollbackEndToEnd(t *testing.T) {
 func TestAgentConcurrentOperations(t *testing.T) {
 	tmpDir, cleanup := setupTestConfig(t)
 	defer cleanup()
-	
+
 	cfg, err := config.Load(tmpDir)
 	require.NoError(t, err)
 
@@ -238,7 +238,7 @@ func TestAgentConcurrentOperations(t *testing.T) {
 func TestAgentCopyEndToEnd(t *testing.T) {
 	tmpDir, cleanup := setupTestConfig(t)
 	defer cleanup()
-	
+
 	cfg, err := config.Load(tmpDir)
 	require.NoError(t, err)
 
@@ -263,7 +263,7 @@ func TestAgentCopyEndToEnd(t *testing.T) {
 	// 4. Fork Agent（使用 storage API）
 	store, err := storage.NewStore(cfg.Home)
 	require.NoError(t, err)
-	
+
 	_, err = store.ForkAgent(context.Background(), sourceAgent, targetAgent)
 	require.NoError(t, err)
 
@@ -290,7 +290,7 @@ func TestAgentCopyEndToEnd(t *testing.T) {
 func TestAgentRecoveryEndToEnd(t *testing.T) {
 	tmpDir, cleanup := setupTestConfig(t)
 	defer cleanup()
-	
+
 	cfg, err := config.Load(tmpDir)
 	require.NoError(t, err)
 

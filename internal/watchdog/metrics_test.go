@@ -88,7 +88,7 @@ func TestWatchdogMetricsConcurrent(t *testing.T) {
 			done <- true
 		}(i)
 	}
-	
+
 	for i := 0; i < 10; i++ {
 		<-done
 	}

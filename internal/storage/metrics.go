@@ -5,14 +5,14 @@ import "keeper/internal/metrics"
 
 // 存储操作指标
 var (
-	SnapshotCreateCounter = metrics.RegisterCounter("keeper_storage_snapshot_create_total", "Total number of snapshot creations", []string{"result"})
-	SnapshotRollbackCounter = metrics.RegisterCounter("keeper_storage_snapshot_rollback_total", "Total number of snapshot rollbacks", []string{"result"})
-	ForkCounter = metrics.RegisterCounter("keeper_storage_fork_total", "Total number of agent forks", []string{"result"})
-	CachePruneCounter = metrics.RegisterCounter("keeper_storage_cache_prune_total", "Total number of cache prune operations", []string{"result"})
-	SnapshotCreateDuration = metrics.RegisterHistogram("keeper_storage_snapshot_create_duration_seconds", "Snapshot creation duration in seconds", nil, nil)
+	SnapshotCreateCounter    = metrics.RegisterCounter("keeper_storage_snapshot_create_total", "Total number of snapshot creations", []string{"result"})
+	SnapshotRollbackCounter  = metrics.RegisterCounter("keeper_storage_snapshot_rollback_total", "Total number of snapshot rollbacks", []string{"result"})
+	ForkCounter              = metrics.RegisterCounter("keeper_storage_fork_total", "Total number of agent forks", []string{"result"})
+	CachePruneCounter        = metrics.RegisterCounter("keeper_storage_cache_prune_total", "Total number of cache prune operations", []string{"result"})
+	SnapshotCreateDuration   = metrics.RegisterHistogram("keeper_storage_snapshot_create_duration_seconds", "Snapshot creation duration in seconds", nil, nil)
 	SnapshotRollbackDuration = metrics.RegisterHistogram("keeper_storage_snapshot_rollback_duration_seconds", "Snapshot rollback duration in seconds", nil, nil)
-	ForkDuration = metrics.RegisterHistogram("keeper_storage_fork_duration_seconds", "Agent fork duration in seconds", nil, nil)
-	CachePruneDuration = metrics.RegisterHistogram("keeper_storage_cache_prune_duration_seconds", "Cache prune duration in seconds", nil, nil)
+	ForkDuration             = metrics.RegisterHistogram("keeper_storage_fork_duration_seconds", "Agent fork duration in seconds", nil, nil)
+	CachePruneDuration       = metrics.RegisterHistogram("keeper_storage_cache_prune_duration_seconds", "Cache prune duration in seconds", nil, nil)
 )
 
 // RecordSnapshotCreate 记录快照创建

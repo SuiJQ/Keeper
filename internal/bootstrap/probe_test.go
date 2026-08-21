@@ -136,7 +136,7 @@ func TestCheckConfigFileFound(t *testing.T) {
 	tmpFile := filepath.Join(t.TempDir(), "config")
 	err := os.WriteFile(tmpFile, []byte("CONFIG_OVERLAY_FS_USERNS=y\n"), 0644)
 	require.NoError(t, err)
-	
+
 	result := checkConfigFile(tmpFile, "CONFIG_OVERLAY_FS_USERNS=y")
 	assert.True(t, result)
 }
@@ -145,7 +145,7 @@ func TestCheckConfigFileNotFound(t *testing.T) {
 	tmpFile := filepath.Join(t.TempDir(), "config")
 	err := os.WriteFile(tmpFile, []byte("CONFIG_OTHER=y\n"), 0644)
 	require.NoError(t, err)
-	
+
 	result := checkConfigFile(tmpFile, "CONFIG_OVERLAY_FS_USERNS=y")
 	assert.False(t, result)
 }
@@ -155,14 +155,14 @@ func TestCheckConfigGzipFound(t *testing.T) {
 	tmpFile := filepath.Join(t.TempDir(), "config.gz")
 	f, err := os.Create(tmpFile)
 	require.NoError(t, err)
-	
+
 	// 使用 gzip 写入内容
 	gw := gzip.NewWriter(f)
 	_, err = gw.Write([]byte("CONFIG_OVERLAY_FS_USERNS=y\n"))
 	require.NoError(t, err)
 	gw.Close()
 	f.Close()
-	
+
 	// 由于 checkConfigGzip 硬编码了 /proc/config.gz 路径，
 	// 这里我们测试函数不会 panic
 	_ = checkConfigGzip("CONFIG_OVERLAY_FS_USERNS=y")

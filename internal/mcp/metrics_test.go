@@ -25,7 +25,7 @@ func TestMCPConnectionCounter(t *testing.T) {
 func TestMCPToolCallCounter(t *testing.T) {
 	tools := []string{"list", "inspect", "start"}
 	results := []string{"success", "error"}
-	
+
 	for _, tool := range tools {
 		for _, result := range results {
 			RecordMCPToolCall(tool, result)
@@ -61,7 +61,7 @@ func TestMCPMetricsConcurrent(t *testing.T) {
 			done <- true
 		}()
 	}
-	
+
 	for i := 0; i < 10; i++ {
 		<-done
 	}

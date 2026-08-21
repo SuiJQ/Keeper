@@ -37,17 +37,17 @@ func TestForwarderStartMultipleForwards(t *testing.T) {
 	// 添加多个端口转发
 	err := f.AddForward(&PortForward{Host: 18081, Container: 8081})
 	require.NoError(t, err)
-	
+
 	err = f.AddForward(&PortForward{Host: 18082, Container: 8082})
 	require.NoError(t, err)
 
 	// 启动转发
 	err = f.Start()
 	require.NoError(t, err)
-	
+
 	// 验证有两个监听器
 	assert.Len(t, f.listeners, 2)
-	
+
 	// 停止转发
 	f.Stop()
 }
@@ -60,9 +60,9 @@ func TestForwarderStartFailure(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	defer listener.Close()
-	
+
 	port := listener.Addr().(*net.TCPAddr).Port
-	
+
 	// 添加冲突的端口转发应该在 AddForward 时就失败
 	err = f.AddForward(&PortForward{Host: port, Container: 8080})
 	assert.Error(t, err)
@@ -71,14 +71,14 @@ func TestForwarderStartFailure(t *testing.T) {
 
 func TestForwarderStopWithoutStart(t *testing.T) {
 	f := NewForwarder(nil)
-	
+
 	// 停止未启动的转发器应该安全
 	f.Stop()
 }
 
 func TestForwarderConcurrentAccess(t *testing.T) {
 	f := NewForwarder(nil)
-	
+
 	// 并发添加端口转发
 	done := make(chan bool, 10)
 	for i := 0; i < 10; i++ {
@@ -87,7 +87,7 @@ func TestForwarderConcurrentAccess(t *testing.T) {
 			done <- true
 		}(18090 + i)
 	}
-	
+
 	for i := 0; i < 10; i++ {
 		<-done
 	}
@@ -97,7 +97,7 @@ func TestBufferPool(t *testing.T) {
 	// 测试缓冲池可以正常获取和放回
 	bufPtr := bufferPool.Get().(*[]byte)
 	defer bufferPool.Put(bufPtr)
-	
+
 	buf := *bufPtr
 	assert.Len(t, buf, 32*1024)
 }
@@ -107,20 +107,20 @@ func TestIoCopyTimeout(t *testing.T) {
 	server, client := net.Pipe()
 	defer server.Close()
 	defer client.Close()
-	
+
 	// 设置读取超时
 	go func() {
 		time.Sleep(100 * time.Millisecond)
 		server.Write([]byte("test"))
 	}()
-	
+
 	// 使用 bufferPool 进行复制
 	bufPtr := bufferPool.Get().(*[]byte)
 	defer bufferPool.Put(bufPtr)
-	
+
 	// 设置超时
 	client.SetReadDeadline(time.Now().Add(50 * time.Millisecond))
-	
+
 	buf := *bufPtr
 	_, err := client.Read(buf)
 	assert.Error(t, err) // 应该超时
@@ -143,11 +143,11 @@ func TestNetworkMetricsRecording(t *testing.T) {
 	RecordPortForward("success")
 	RecordPortForward("error")
 	RecordPortForwardDuration(0.5)
-	
+
 	RecordProxyConnection("success")
 	RecordProxyConnection("error")
 	RecordProxyConnectionDuration(1.2)
-	
+
 	RecordDataTransfer("upload", 1024)
 	RecordDataTransfer("download", 2048)
 }
@@ -164,7 +164,7 @@ func TestNetworkMetricsConcurrent(t *testing.T) {
 			done <- true
 		}(i)
 	}
-	
+
 	for i := 0; i < 10; i++ {
 		<-done
 	}
@@ -176,7 +176,7 @@ func TestNetworkMetricsEdgeCases(t *testing.T) {
 	RecordPortForwardDuration(0)
 	RecordProxyConnectionDuration(0)
 	RecordDataTransfer("upload", 0)
-	
+
 	// 测试大值
 	RecordDataTransfer("download", 999999999)
 }

@@ -19,28 +19,28 @@ func TestGetHomeDir(t *testing.T) {
 	}()
 
 	tests := []struct {
-		name     string
-		home     string
+		name       string
+		home       string
 		keeperHome string
-		want     string
+		want       string
 	}{
 		{
-			name:      "default uses HOME",
-			home:      "/tmp/test-home",
+			name:       "default uses HOME",
+			home:       "/tmp/test-home",
 			keeperHome: "",
-			want:      filepath.Join("/tmp/test-home", defaultHome),
+			want:       filepath.Join("/tmp/test-home", defaultHome),
 		},
 		{
-			name:      "KEEPER_HOME overrides HOME",
-			home:      "/tmp/test-home",
+			name:       "KEEPER_HOME overrides HOME",
+			home:       "/tmp/test-home",
 			keeperHome: "/custom/keeper/home",
-			want:      "/custom/keeper/home",
+			want:       "/custom/keeper/home",
 		},
 		{
-			name:      "empty HOME with KEEPER_HOME",
-			home:      "",
+			name:       "empty HOME with KEEPER_HOME",
+			home:       "",
 			keeperHome: "/another/path",
-			want:      "/another/path",
+			want:       "/another/path",
 		},
 	}
 
@@ -48,7 +48,7 @@ func TestGetHomeDir(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			os.Setenv("HOME", tt.home)
 			os.Setenv("KEEPER_HOME", tt.keeperHome)
-			
+
 			got := getHomeDir()
 			assert.Equal(t, tt.want, got)
 		})
@@ -132,17 +132,17 @@ func TestParseAgentPath(t *testing.T) {
 
 func TestCopyLocalToLocal(t *testing.T) {
 	tmpDir := t.TempDir()
-	
+
 	src := filepath.Join(tmpDir, "src.txt")
 	dst := filepath.Join(tmpDir, "dst.txt")
-	
+
 	// 写入源文件
 	require.NoError(t, os.WriteFile(src, []byte("hello world"), 0644))
-	
+
 	// 复制文件
 	err := copyLocalToLocal(src, dst)
 	require.NoError(t, err)
-	
+
 	// 验证目标文件
 	content, err := os.ReadFile(dst)
 	require.NoError(t, err)
@@ -151,7 +151,7 @@ func TestCopyLocalToLocal(t *testing.T) {
 
 func TestCopyLocalToLocalMissingSource(t *testing.T) {
 	tmpDir := t.TempDir()
-	
+
 	err := copyLocalToLocal(filepath.Join(tmpDir, "nonexistent"), filepath.Join(tmpDir, "dst"))
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "source not found")
@@ -159,25 +159,25 @@ func TestCopyLocalToLocalMissingSource(t *testing.T) {
 
 func TestCopyLocalToLocalDirectorySource(t *testing.T) {
 	tmpDir := t.TempDir()
-	
+
 	src := filepath.Join(tmpDir, "src")
 	dst := filepath.Join(tmpDir, "dst")
-	
+
 	// 创建源目录
 	require.NoError(t, os.MkdirAll(src, 0755))
 	require.NoError(t, os.WriteFile(filepath.Join(src, "file.txt"), []byte("hello"), 0644))
-	
+
 	// 复制目录
 	err := copyLocalToLocal(src, dst)
 	require.NoError(t, err)
-	
+
 	// 验证目录已复制
 	assert.FileExists(t, filepath.Join(dst, "file.txt"))
 }
 
 func TestCopyDirRecursiveMissingSource(t *testing.T) {
 	tmpDir := t.TempDir()
-	
+
 	err := copyDirRecursive(filepath.Join(tmpDir, "nonexistent"), filepath.Join(tmpDir, "dst"))
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "lstat")
@@ -185,17 +185,17 @@ func TestCopyDirRecursiveMissingSource(t *testing.T) {
 
 func TestCopyDirRecursiveFileSource(t *testing.T) {
 	tmpDir := t.TempDir()
-	
+
 	src := filepath.Join(tmpDir, "src.txt")
 	dst := filepath.Join(tmpDir, "dst")
-	
+
 	// 创建源文件
 	require.NoError(t, os.WriteFile(src, []byte("hello"), 0644))
-	
+
 	// copyDirRecursive 对文件源会返回 nil（filepath.Walk 可以处理文件）
 	err := copyDirRecursive(src, dst)
 	assert.NoError(t, err)
-	
+
 	// 验证文件已复制（作为文件而不是目录）
 	assert.FileExists(t, dst)
 }

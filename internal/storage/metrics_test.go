@@ -14,7 +14,7 @@ func TestStorageMetricsRecording(t *testing.T) {
 	RecordFork("error")
 	RecordCachePrune("success")
 	RecordCachePrune("error")
-	
+
 	RecordSnapshotCreateDuration(0.5)
 	RecordSnapshotRollbackDuration(0.3)
 	RecordForkDuration(0.8)
@@ -34,7 +34,7 @@ func TestStorageMetricsConcurrent(t *testing.T) {
 			done <- true
 		}(i)
 	}
-	
+
 	for i := 0; i < 10; i++ {
 		<-done
 	}
@@ -47,7 +47,7 @@ func TestStorageMetricsEdgeCases(t *testing.T) {
 	RecordSnapshotRollbackDuration(0)
 	RecordForkDuration(0)
 	RecordCachePruneDuration(0)
-	
+
 	// 测试大值
 	RecordSnapshotCreateDuration(999999.0)
 }

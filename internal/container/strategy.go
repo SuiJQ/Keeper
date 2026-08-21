@@ -175,7 +175,7 @@ func (o *OverlayFSStrategy) Name() string {
 type NetworkStrategy interface {
 	// Name 返回策略名称
 	Name() string
-	
+
 	// Configure 配置容器网络
 	Configure(spec ContainerSpec) ([]string, error)
 }
@@ -201,14 +201,14 @@ func (s *DefaultNetworkStrategy) Name() string {
 // Configure 配置容器网络
 func (s *DefaultNetworkStrategy) Configure(spec ContainerSpec) ([]string, error) {
 	args := []string{}
-	
+
 	// 配置 DNS
 	if len(spec.Envvars) > 0 {
 		// 设置 DNS 配置
 		args = append(args, "--setenv=NAMESERVER=8.8.8.8")
 		args = append(args, "--setenv=NAMESERVER=8.8.4.4")
 	}
-	
+
 	return args, nil
 }
 
@@ -217,7 +217,7 @@ func NewNetworkStrategy(name string, logger log.Logger) (NetworkStrategy, error)
 	if logger == nil {
 		logger = log.Global()
 	}
-	
+
 	switch name {
 	case "", "default":
 		return NewDefaultNetworkStrategy(logger), nil
@@ -230,7 +230,7 @@ func NewNetworkStrategy(name string, logger log.Logger) (NetworkStrategy, error)
 type ResourceStrategy interface {
 	// Name 返回策略名称
 	Name() string
-	
+
 	// Configure 配置容器资源限制
 	Configure(spec ContainerSpec) ([]string, error)
 }
@@ -256,12 +256,12 @@ func (s *DefaultResourceStrategy) Name() string {
 // Configure 配置容器资源限制
 func (s *DefaultResourceStrategy) Configure(spec ContainerSpec) ([]string, error) {
 	args := []string{}
-	
+
 	// 配置共享内存大小
 	if spec.ShmSize > 0 {
 		args = append(args, fmt.Sprintf("--shm-size=%dm", spec.ShmSize))
 	}
-	
+
 	return args, nil
 }
 
@@ -270,7 +270,7 @@ func NewResourceStrategy(name string, logger log.Logger) (ResourceStrategy, erro
 	if logger == nil {
 		logger = log.Global()
 	}
-	
+
 	switch name {
 	case "", "default":
 		return NewDefaultResourceStrategy(logger), nil
@@ -283,7 +283,7 @@ func NewResourceStrategy(name string, logger log.Logger) (ResourceStrategy, erro
 type LogStrategy interface {
 	// Name 返回策略名称
 	Name() string
-	
+
 	// Configure 配置容器日志
 	Configure(spec ContainerSpec) ([]string, error)
 }
@@ -309,11 +309,11 @@ func (s *DefaultLogStrategy) Name() string {
 // Configure 配置容器日志
 func (s *DefaultLogStrategy) Configure(spec ContainerSpec) ([]string, error) {
 	args := []string{}
-	
+
 	// 配置日志输出
 	args = append(args, "--log-level=info")
 	args = append(args, "--log-file=/dev/null")
-	
+
 	return args, nil
 }
 
@@ -322,7 +322,7 @@ func NewLogStrategy(name string, logger log.Logger) (LogStrategy, error) {
 	if logger == nil {
 		logger = log.Global()
 	}
-	
+
 	switch name {
 	case "", "default":
 		return NewDefaultLogStrategy(logger), nil

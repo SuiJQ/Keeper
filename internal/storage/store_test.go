@@ -301,9 +301,9 @@ func TestListSnapshots(t *testing.T) {
 	// 创建多个快照
 	err = store.CreateSnapshot(ctx, "test-agent", "snap1")
 	require.NoError(t, err)
-	
+
 	time.Sleep(10 * time.Millisecond) // 确保时间不同
-	
+
 	err = store.CreateSnapshot(ctx, "test-agent", "snap2")
 	require.NoError(t, err)
 
@@ -311,11 +311,11 @@ func TestListSnapshots(t *testing.T) {
 	snapshots, err := store.ListSnapshots(ctx, "test-agent")
 	require.NoError(t, err)
 	assert.Len(t, snapshots, 2)
-	
+
 	// 验证按时间倒序排列
 	assert.Equal(t, "snap2", snapshots[0].SnapshotID)
 	assert.Equal(t, "snap1", snapshots[1].SnapshotID)
-	
+
 	// 验证 ParentID
 	assert.Equal(t, "snap1", snapshots[0].ParentID)
 	assert.Empty(t, snapshots[1].ParentID)
@@ -369,14 +369,14 @@ func TestRollbackSnapshotMultiple(t *testing.T) {
 	// 回滚到快照2
 	err = store.RollbackSnapshot(ctx, "test-agent", "snap2")
 	require.NoError(t, err)
-	
+
 	content, _ := os.ReadFile(upperFile)
 	assert.Equal(t, []byte("v2"), content)
 
 	// 回滚到快照1
 	err = store.RollbackSnapshot(ctx, "test-agent", "snap1")
 	require.NoError(t, err)
-	
+
 	content, _ = os.ReadFile(upperFile)
 	assert.Equal(t, []byte("v1"), content)
 }
@@ -393,10 +393,10 @@ func TestCreateSnapshotWithWorkspace(t *testing.T) {
 	// 写入 upper 和 workspace 文件
 	upperFile := filepath.Join(tmpDir, "agents", "test-agent", "upper", "data.txt")
 	workspaceFile := filepath.Join(tmpDir, "agents", "test-agent", "workspace", "work.txt")
-	
+
 	err = os.WriteFile(upperFile, []byte("upper data"), 0644)
 	require.NoError(t, err)
-	
+
 	err = os.MkdirAll(filepath.Dir(workspaceFile), 0755)
 	require.NoError(t, err)
 	err = os.WriteFile(workspaceFile, []byte("workspace data"), 0644)
@@ -439,7 +439,7 @@ func TestForkAgentWithSnapshots(t *testing.T) {
 	snapshots, err := store.ListSnapshots(ctx, "forked")
 	require.NoError(t, err)
 	assert.Empty(t, snapshots)
-	
+
 	// 验证 fork 的 agent 有正确的文件
 	forkedFile := filepath.Join(tmpDir, "agents", "forked", "upper", "data.txt")
 	assert.FileExists(t, forkedFile)
@@ -452,30 +452,30 @@ func TestCopyPhysical(t *testing.T) {
 	// 创建源目录
 	srcDir := t.TempDir()
 	dstDir := t.TempDir()
-	
+
 	// 创建测试文件和子目录
 	srcFile := filepath.Join(srcDir, "test.txt")
 	err := os.WriteFile(srcFile, []byte("hello world"), 0644)
 	require.NoError(t, err)
-	
+
 	srcSubdir := filepath.Join(srcDir, "subdir")
 	err = os.MkdirAll(srcSubdir, 0755)
 	require.NoError(t, err)
-	
+
 	srcSubFile := filepath.Join(srcSubdir, "nested.txt")
 	err = os.WriteFile(srcSubFile, []byte("nested content"), 0644)
 	require.NoError(t, err)
-	
+
 	// 执行物理拷贝
 	err = copyPhysical(srcDir, dstDir)
 	require.NoError(t, err)
-	
+
 	// 验证文件存在
 	dstFile := filepath.Join(dstDir, "test.txt")
 	content, err := os.ReadFile(dstFile)
 	require.NoError(t, err)
 	assert.Equal(t, "hello world", string(content))
-	
+
 	// 验证子目录和文件存在
 	dstSubFile := filepath.Join(dstDir, "subdir", "nested.txt")
 	content, err = os.ReadFile(dstSubFile)
@@ -487,10 +487,10 @@ func TestCopyPhysical(t *testing.T) {
 func TestCopyPhysicalEmptyDir(t *testing.T) {
 	srcDir := t.TempDir()
 	dstDir := t.TempDir()
-	
+
 	err := copyPhysical(srcDir, dstDir)
 	require.NoError(t, err)
-	
+
 	// 验证目标目录存在
 	_, err = os.Stat(dstDir)
 	assert.NoError(t, err)
@@ -501,11 +501,11 @@ func TestCheckSameDevice(t *testing.T) {
 	// 测试相同设备
 	err := checkSameDevice("/tmp", "/tmp")
 	assert.NoError(t, err)
-	
+
 	// 测试少于2个路径
 	err = checkSameDevice("/tmp")
 	assert.NoError(t, err)
-	
+
 	err = checkSameDevice()
 	assert.NoError(t, err)
 }
@@ -514,12 +514,12 @@ func TestCheckSameDevice(t *testing.T) {
 func TestCheckSameDeviceDifferentDevices(t *testing.T) {
 	// 获取 /tmp 和当前目录的设备
 	tmpDir := t.TempDir()
-	
+
 	// 创建子目录确保在同一设备上
 	subDir := filepath.Join(tmpDir, "sub")
 	err := os.MkdirAll(subDir, 0755)
 	require.NoError(t, err)
-	
+
 	// 测试同一设备上的路径
 	err = checkSameDevice(tmpDir, subDir)
 	assert.NoError(t, err)
@@ -529,26 +529,26 @@ func TestCheckSameDeviceDifferentDevices(t *testing.T) {
 func TestAtomicExchange(t *testing.T) {
 	// 创建临时目录
 	tmpDir := t.TempDir()
-	
+
 	// 创建源文件和目标文件
 	source := filepath.Join(tmpDir, "source.txt")
 	target := filepath.Join(tmpDir, "target.txt")
-	
+
 	err := os.WriteFile(source, []byte("source content"), 0644)
 	require.NoError(t, err)
-	
+
 	err = os.WriteFile(target, []byte("target content"), 0644)
 	require.NoError(t, err)
-	
+
 	// 执行原子交换
 	err = atomicExchange(source, target)
 	require.NoError(t, err)
-	
+
 	// 验证内容已交换
 	content, err := os.ReadFile(source)
 	require.NoError(t, err)
 	assert.Equal(t, "target content", string(content))
-	
+
 	content, err = os.ReadFile(target)
 	require.NoError(t, err)
 	assert.Equal(t, "source content", string(content))
@@ -557,13 +557,13 @@ func TestAtomicExchange(t *testing.T) {
 // TestAtomicExchangeNonExistent 测试不存在的文件
 func TestAtomicExchangeNonExistent(t *testing.T) {
 	tmpDir := t.TempDir()
-	
+
 	source := filepath.Join(tmpDir, "nonexistent.txt")
 	target := filepath.Join(tmpDir, "target.txt")
-	
+
 	err := os.WriteFile(target, []byte("target content"), 0644)
 	require.NoError(t, err)
-	
+
 	// 交换不存在的文件应该返回错误
 	err = atomicExchange(source, target)
 	assert.Error(t, err)
