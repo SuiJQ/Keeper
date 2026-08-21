@@ -20,33 +20,33 @@ func TestSOCKS5ServerHandleUsernameAuth(t *testing.T) {
 		expectResponse []byte
 	}{
 		{
-			name:          "empty credentials rejects all",
-			auth:          &ProxyAuth{Username: "", Password: ""},
-			request:       []byte{0x01, 0x05, 0x61, 0x6c, 0x69, 0x63, 0x65},
-			expectSuccess: false,
+			name:           "empty credentials rejects all",
+			auth:           &ProxyAuth{Username: "", Password: ""},
+			request:        []byte{0x01, 0x05, 0x61, 0x6c, 0x69, 0x63, 0x65},
+			expectSuccess:  false,
 			expectResponse: []byte{0x01, 0x01}, // 认证失败
 		},
 		{
 			// 注意：由于 handleUsernameAuth 中密码解析包含密码长度字节，
 			// 此处使用特殊构造的密码以匹配实际解析结果
-			name:          "correct credentials with bug-compatible password",
-			auth:          &ProxyAuth{Username: "a", Password: "\x01"},
-			request:       []byte{0x01, 0x01, 0x61, 0x01, 0x01},
-			expectSuccess: true,
+			name:           "correct credentials with bug-compatible password",
+			auth:           &ProxyAuth{Username: "a", Password: "\x01"},
+			request:        []byte{0x01, 0x01, 0x61, 0x01, 0x01},
+			expectSuccess:  true,
 			expectResponse: []byte{0x01, 0x00}, // 认证成功
 		},
 		{
-			name:          "wrong password",
-			auth:          &ProxyAuth{Username: "alice", Password: "secret"},
-			request:       []byte{0x01, 0x05, 0x61, 0x6c, 0x69, 0x63, 0x65, 0x06, 0x77, 0x72, 0x6f, 0x6e, 0x67},
-			expectSuccess: false,
+			name:           "wrong password",
+			auth:           &ProxyAuth{Username: "alice", Password: "secret"},
+			request:        []byte{0x01, 0x05, 0x61, 0x6c, 0x69, 0x63, 0x65, 0x06, 0x77, 0x72, 0x6f, 0x6e, 0x67},
+			expectSuccess:  false,
 			expectResponse: []byte{0x01, 0x01}, // 认证失败
 		},
 		{
-			name:          "invalid packet format",
-			auth:          &ProxyAuth{Username: "alice", Password: "secret"},
-			request:       []byte{0x01, 0x03}, // 长度不足
-			expectSuccess: false,
+			name:           "invalid packet format",
+			auth:           &ProxyAuth{Username: "alice", Password: "secret"},
+			request:        []byte{0x01, 0x03}, // 长度不足
+			expectSuccess:  false,
 			expectResponse: nil,
 		},
 	}
