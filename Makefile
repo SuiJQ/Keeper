@@ -90,6 +90,13 @@ docker-build: ## 构建 Docker 镜像
 	@docker build -t $(BINARY_NAME):$(VERSION) -f deploy/Dockerfile .
 	@docker build -t $(BINARY_NAME):latest -f deploy/Dockerfile .
 
+docker-test: ## 在 Docker 中运行测试（模拟 CI 环境）
+	@echo "在 Docker 中运行测试..."
+	@docker run --rm -v $(PWD):/workspace -w /workspace $(BINARY_NAME):$(VERSION) sh -c "make test lint vet"
+
+ci-local: tidy lint vet test ## 本地 CI 完整测试流程
+	@echo "本地 CI 测试完成"
+
 ci-test: tidy lint vet test ## CI 完整测试流程
 	@echo "CI 测试完成"
 
