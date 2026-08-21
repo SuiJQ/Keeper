@@ -23,6 +23,19 @@ func NewHTTPServer(addr string) *HTTPServer {
 	}
 }
 
+// Addr 返回服务器实际监听地址
+func (s *HTTPServer) Addr() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.server != nil {
+		if s.server.Addr != "" {
+			return s.server.Addr
+		}
+	}
+	return s.addr
+}
+
 // Start 启动 HTTP 服务器
 func (s *HTTPServer) Start() error {
 	s.mu.Lock()
@@ -72,11 +85,6 @@ func (s *HTTPServer) IsRunning() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.running
-}
-
-// Addr 返回服务器地址
-func (s *HTTPServer) Addr() string {
-	return s.addr
 }
 
 // 全局 HTTP 服务器
