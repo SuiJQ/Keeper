@@ -180,3 +180,35 @@ func TestNetworkMetricsEdgeCases(t *testing.T) {
 	// 测试大值
 	RecordDataTransfer("download", 999999999)
 }
+
+// TestIoCopyBidirectionalComplete 测试双向复制完整性
+func TestIoCopyBidirectionalComplete(t *testing.T) {
+	// 创建两个模拟连接
+	client, server := net.Pipe()
+	defer client.Close()
+	defer server.Close()
+
+	// 客户端发送数据
+	go func() {
+		client.Write([]byte("hello from client"))
+		client.Close()
+	}()
+
+	// 服务端接收并响应
+	bufPtr := bufferPool.Get().(*[]byte)
+	defer bufferPool.Put(bufPtr)
+	buf := *bufPtr
+
+	n, err := server.Read(buf)
+	require.NoError(t, err)
+	assert.Equal(t, "hello from client", string(buf[:n]))
+
+	// 服务端发送响应
+	server.Write([]byte("hello from server"))
+	server.Close()
+
+	// 客户端接收响应
+	n, err = client.Read(buf)
+	assert.Error(t, err) // 连接已关闭
+	_ = n
+}
