@@ -379,9 +379,30 @@ func (c *BwrapContainer) buildArgs(spec ContainerSpec) ([]string, string) {
 		args = append(args, "--overlay", "/", "/lower:/upper:/work")
 	}
 
-	// 共享内存
-	if spec.ShmSize > 0 {
+	// 共享内存（使用资源策略接口）
+	if c.resourceStrat != nil {
+		resourceArgs, err := c.resourceStrat.Configure(spec)
+		if err == nil {
+			args = append(args, resourceArgs...)
+		}
+	} else if spec.ShmSize > 0 {
 		args = append(args, fmt.Sprintf("--shm-size=%dm", spec.ShmSize))
+	}
+
+	// 网络配置（使用网络策略接口）
+	if c.networkStrat != nil {
+		networkArgs, err := c.networkStrat.Configure(spec)
+		if err == nil {
+			args = append(args, networkArgs...)
+		}
+	}
+
+	// 日志配置（使用日志策略接口）
+	if c.logStrat != nil {
+		logArgs, err := c.logStrat.Configure(spec)
+		if err == nil {
+			args = append(args, logArgs...)
+		}
 	}
 
 	// 工作区绑定
