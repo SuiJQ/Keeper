@@ -246,6 +246,7 @@ func (s *fileStore) DeleteAgent(ctx context.Context, name string) error {
 
 // ForkAgent 复制 Agent（复用 rootfs 创建逻辑）
 func (s *fileStore) ForkAgent(ctx context.Context, source, target string) (*AgentMeta, error) {
+	startTime := time.Now()
 	sourcePath := s.agentDir(source)
 	targetPath := s.agentDir(target)
 
@@ -334,15 +335,19 @@ func (s *fileStore) ForkAgent(ctx context.Context, source, target string) (*Agen
 		return nil, fmt.Errorf("write target meta: %w", err)
 	}
 
+	RecordFork("success")
+	RecordForkDuration(time.Since(startTime).Seconds())
 	return newMeta, nil
 }
 
 // CreateSnapshot 创建快照（支持压缩与增量）
 func (s *fileStore) CreateSnapshot(ctx context.Context, name, snapshotID string) error {
+	startTime := time.Now()
 	agentPath := s.agentDir(name)
 	backupsDir := filepath.Join(agentPath, "backups", snapshotID)
 
 	if err := os.MkdirAll(backupsDir, 0700); err != nil {
+		RecordSnapshotCreate("error")
 		return fmt.Errorf("create snapshot dir: %w", err)
 	}
 
@@ -359,6 +364,7 @@ func (s *fileStore) CreateSnapshot(ctx context.Context, name, snapshotID string)
 	upperSize, files, err := compressCopy(upperPath, upperDst)
 	if err != nil {
 		_ = os.RemoveAll(backupsDir)
+		RecordSnapshotCreate("error")
 		return fmt.Errorf("snapshot upper: %w", err)
 	}
 
@@ -368,6 +374,7 @@ func (s *fileStore) CreateSnapshot(ctx context.Context, name, snapshotID string)
 	workspaceSize, _, err := compressCopy(workspacePath, workspaceDst)
 	if err != nil {
 		_ = os.RemoveAll(backupsDir)
+		RecordSnapshotCreate("error")
 		return fmt.Errorf("snapshot workspace: %w", err)
 	}
 
@@ -384,19 +391,24 @@ func (s *fileStore) CreateSnapshot(ctx context.Context, name, snapshotID string)
 	metaJSON, _ := json.Marshal(meta)
 	if err := os.WriteFile(filepath.Join(backupsDir, "meta.json"), metaJSON, 0600); err != nil {
 		_ = os.RemoveAll(backupsDir)
+		RecordSnapshotCreate("error")
 		return fmt.Errorf("write snapshot meta: %w", err)
 	}
 
+	RecordSnapshotCreate("success")
+	RecordSnapshotCreateDuration(time.Since(startTime).Seconds())
 	return nil
 }
 
 // RollbackSnapshot 回滚快照
 func (s *fileStore) RollbackSnapshot(ctx context.Context, name, snapshotID string) error {
+	startTime := time.Now()
 	agentPath := s.agentDir(name)
 	snapshotDir := filepath.Join(agentPath, "backups", snapshotID)
 
 	// 检查快照存在
 	if _, err := os.Stat(snapshotDir); err != nil {
+		RecordSnapshotRollback("error")
 		return fmt.Errorf("snapshot '%s' not found: %w", snapshotID, err)
 	}
 
@@ -407,6 +419,7 @@ func (s *fileStore) RollbackSnapshot(ctx context.Context, name, snapshotID strin
 	// 解压 upper
 	upperTmp := upperPath + ".rollback"
 	if err := decompressCopy(filepath.Join(snapshotDir, "upper.tar.gz"), upperTmp); err != nil {
+		RecordSnapshotRollback("error")
 		return fmt.Errorf("decompress upper: %w", err)
 	}
 
@@ -414,6 +427,7 @@ func (s *fileStore) RollbackSnapshot(ctx context.Context, name, snapshotID strin
 	workspaceTmp := workspacePath + ".rollback"
 	if err := decompressCopy(filepath.Join(snapshotDir, "workspace.tar.gz"), workspaceTmp); err != nil {
 		_ = os.RemoveAll(upperTmp)
+		RecordSnapshotRollback("error")
 		return fmt.Errorf("decompress workspace: %w", err)
 	}
 
@@ -421,6 +435,7 @@ func (s *fileStore) RollbackSnapshot(ctx context.Context, name, snapshotID strin
 	if err := atomicExchange(upperPath, upperTmp); err != nil {
 		_ = os.RemoveAll(upperTmp)
 		_ = os.RemoveAll(workspaceTmp)
+		RecordSnapshotRollback("error")
 		return fmt.Errorf("atomic exchange upper: %w", err)
 	}
 
@@ -428,20 +443,25 @@ func (s *fileStore) RollbackSnapshot(ctx context.Context, name, snapshotID strin
 	if err := atomicExchange(workspacePath, workspaceTmp); err != nil {
 		atomicExchange(upperTmp, upperPath)
 		_ = os.RemoveAll(workspaceTmp)
+		RecordSnapshotRollback("error")
 		return fmt.Errorf("atomic exchange workspace: %w", err)
 	}
 
 	// 重建 work 目录
 	workPath := filepath.Join(agentPath, "work")
 	if err := recreateWorkDir(workPath); err != nil {
+		RecordSnapshotRollback("error")
 		return fmt.Errorf("recreate work dir: %w", err)
 	}
 
+	RecordSnapshotRollback("success")
+	RecordSnapshotRollbackDuration(time.Since(startTime).Seconds())
 	return nil
 }
 
 // PruneCache 清理未引用的缓存
 func (s *fileStore) PruneCache(ctx context.Context, dryRun bool) ([]string, error) {
+	startTime := time.Now()
 	// 获取所有活跃的 cache_key
 	activeKeys := make(map[string]bool)
 	agents, err := s.ListAgents(ctx)
@@ -458,8 +478,10 @@ func (s *fileStore) PruneCache(ctx context.Context, dryRun bool) ([]string, erro
 	entries, err := os.ReadDir(s.cacheDir)
 	if err != nil {
 		if os.IsNotExist(err) {
+			RecordCachePrune("success")
 			return nil, nil
 		}
+		RecordCachePrune("error")
 		return nil, err
 	}
 
@@ -473,12 +495,20 @@ func (s *fileStore) PruneCache(ctx context.Context, dryRun bool) ([]string, erro
 				deleted = append(deleted, entry.Name())
 			} else {
 				if err := os.RemoveAll(filepath.Join(s.cacheDir, entry.Name())); err != nil {
+					RecordCachePrune("error")
 					return nil, fmt.Errorf("delete cache %s: %w", entry.Name(), err)
 				}
 				deleted = append(deleted, entry.Name())
 			}
 		}
 	}
+
+	result := "success"
+	if dryRun {
+		result = "dry_run"
+	}
+	RecordCachePrune(result)
+	RecordCachePruneDuration(time.Since(startTime).Seconds())
 	return deleted, nil
 }
 

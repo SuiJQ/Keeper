@@ -63,13 +63,18 @@ func (f *Forwarder) Start() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
+	startTime := time.Now()
 	for _, pf := range f.portForwards {
 		if err := f.startForward(pf); err != nil {
 			f.Stop()
+			RecordPortForward("error")
+			RecordPortForwardDuration(time.Since(startTime).Seconds())
 			return fmt.Errorf("start forward %s: %w", pf.String(), err)
 		}
 	}
 
+	RecordPortForward("success")
+	RecordPortForwardDuration(time.Since(startTime).Seconds())
 	return nil
 }
 
@@ -108,6 +113,9 @@ func (f *Forwarder) acceptLoop(listener net.Listener, pf *PortForward) {
 
 // handleConnection 处理单个连接
 func (f *Forwarder) handleConnection(clientConn net.Conn, pf *PortForward) {
+	startTime := time.Now()
+	RecordProxyConnection("attempt")
+
 	defer clientConn.Close()
 
 	// 连接到容器端口
@@ -117,6 +125,7 @@ func (f *Forwarder) handleConnection(clientConn net.Conn, pf *PortForward) {
 		f.logger.Warn("connect to container failed",
 			log.Field{Key: "container", Value: containerAddr},
 			log.Field{Key: "error", Value: err.Error()})
+		RecordProxyConnection("error")
 		return
 	}
 	defer containerConn.Close()
@@ -125,33 +134,39 @@ func (f *Forwarder) handleConnection(clientConn net.Conn, pf *PortForward) {
 	done := make(chan struct{}, 2)
 
 	go func() {
-		ioCopy(clientConn, containerConn)
+		n, _ := ioCopy(clientConn, containerConn)
+		RecordDataTransfer("to_container", int64(n))
 		done <- struct{}{}
 	}()
 
 	go func() {
-		ioCopy(containerConn, clientConn)
+		n, _ := ioCopy(containerConn, clientConn)
+		RecordDataTransfer("to_client", int64(n))
 		done <- struct{}{}
 	}()
 
 	<-done
+	RecordProxyConnection("success")
+	RecordProxyConnectionDuration(time.Since(startTime).Seconds())
 }
 
 // ioCopy 双向数据复制（带超时，使用缓冲池）
-func ioCopy(dst, src net.Conn) {
+func ioCopy(dst, src net.Conn) (int64, error) {
 	bufPtr := bufferPool.Get().(*[]byte)
 	buf := *bufPtr
 	defer bufferPool.Put(bufPtr)
 
+	var total int64
 	for {
 		src.SetReadDeadline(time.Now().Add(30 * time.Second))
 		n, err := src.Read(buf)
 		if err != nil {
-			return
+			return total, err
 		}
+		total += int64(n)
 		dst.SetWriteDeadline(time.Now().Add(30 * time.Second))
 		if _, err := dst.Write(buf[:n]); err != nil {
-			return
+			return total, err
 		}
 	}
 }
