@@ -772,6 +772,9 @@ func compressCopy(src, dst string) (int64, int, error) {
 	gw := gzip.NewWriter(f)
 	defer gw.Close()
 
+	tw := tar.NewWriter(gw)
+	defer tw.Close()
+
 	var totalSize int64
 	var fileCount int
 	err = filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
@@ -792,7 +795,7 @@ func compressCopy(src, dst string) (int64, int, error) {
 			return err
 		}
 		header.Name = rel
-		if err := tar.NewWriter(gw).WriteHeader(header); err != nil {
+		if err := tw.WriteHeader(header); err != nil {
 			return err
 		}
 
@@ -805,9 +808,9 @@ func compressCopy(src, dst string) (int64, int, error) {
 		if err != nil {
 			return err
 		}
-		defer srcFile.Close()
-
+		// 立即复制并关闭文件，避免文件描述符泄漏
 		n, err := io.Copy(gw, srcFile)
+		srcFile.Close()
 		if err != nil {
 			return err
 		}

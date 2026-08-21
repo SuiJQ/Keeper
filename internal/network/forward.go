@@ -145,7 +145,10 @@ func (f *Forwarder) handleConnection(clientConn net.Conn, pf *PortForward) {
 		done <- struct{}{}
 	}()
 
-	<-done
+	// 等待两个方向都完成
+	for i := 0; i < 2; i++ {
+		<-done
+	}
 	RecordProxyConnection("success")
 	RecordProxyConnectionDuration(time.Since(startTime).Seconds())
 }
