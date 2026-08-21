@@ -85,14 +85,14 @@ type PortMapping struct {
 
 // SnapshotMeta 快照元数据
 type SnapshotMeta struct {
-	SnapshotID string    `json:"snapshot_id"`
-	ParentID   string    `json:"parent_id,omitempty"`
-	CreatedAt  time.Time `json:"created_at"`
-	Compressed bool      `json:"compressed"`
-	UpperSize  int64     `json:"upper_size_bytes"`
-	WorkSize   int64     `json:"workspace_size_bytes"`
-	Files      int       `json:"files_count"`
-	Incremental bool     `json:"incremental,omitempty"`
+	SnapshotID  string    `json:"snapshot_id"`
+	ParentID    string    `json:"parent_id,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
+	Compressed  bool      `json:"compressed"`
+	UpperSize   int64     `json:"upper_size_bytes"`
+	WorkSize    int64     `json:"workspace_size_bytes"`
+	Files       int       `json:"files_count"`
+	Incremental bool      `json:"incremental,omitempty"`
 }
 
 // fileStore 基于文件系统的存储实现
@@ -381,13 +381,13 @@ func (s *fileStore) CreateSnapshot(ctx context.Context, name, snapshotID string,
 
 	// 写入快照元数据
 	meta := SnapshotMeta{
-		SnapshotID: snapshotID,
-		ParentID:   parentID,
-		CreatedAt:  time.Now().UTC(),
-		Compressed: true,
-		UpperSize:  upperSize,
-		WorkSize:   workspaceSize,
-		Files:      files,
+		SnapshotID:  snapshotID,
+		ParentID:    parentID,
+		CreatedAt:   time.Now().UTC(),
+		Compressed:  true,
+		UpperSize:   upperSize,
+		WorkSize:    workspaceSize,
+		Files:       files,
 		Incremental: parentID != "", // 有父快照则为增量快照
 	}
 	metaJSON, _ := json.Marshal(meta)

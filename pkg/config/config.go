@@ -76,17 +76,17 @@ type Config struct {
 // DefaultConfig 返回默认配置
 func DefaultConfig() *Config {
 	return &Config{
-		LogLevel:                "info",
-		MaxDownloadBytes:        1024 * 1024 * 1024, // 1GB
-		DisableCrossDeviceCheck: false,
-		DefaultShmSizeMB:        64,
-		DownloadTimeout:         "5m",
-		WatchdogTimeout:         "60s",
-		WatchdogCheckInterval:   "5s",
-		MCPAllowedUIDs:          []uint32{},
-		MCPAllowedGIDs:          []uint32{},
-		SeccompStrategy:         "default",
-		OverlayStrategy:         "default",
+		LogLevel:                 "info",
+		MaxDownloadBytes:         1024 * 1024 * 1024, // 1GB
+		DisableCrossDeviceCheck:  false,
+		DefaultShmSizeMB:         64,
+		DownloadTimeout:          "5m",
+		WatchdogTimeout:          "60s",
+		WatchdogCheckInterval:    "5s",
+		MCPAllowedUIDs:           []uint32{},
+		MCPAllowedGIDs:           []uint32{},
+		SeccompStrategy:          "default",
+		OverlayStrategy:          "default",
 		SnapshotCompressionLevel: 6, // 平衡速度和压缩率
 	}
 }
