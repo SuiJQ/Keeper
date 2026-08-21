@@ -55,7 +55,7 @@ func TestConfigReloadIfChanged(t *testing.T) {
 
 	// 修改配置文件
 	configFile := filepath.Join(tmpDir, "config.json")
-	newData := []byte(`{"log_level":"debug","max_download_bytes":2147483648,"disable_cross_device_check":true,"default_shm_size_mb":128,"download_timeout":"10m","watchdog_timeout":"120s","watchdog_check_interval":"10s","mcp_allowed_uids":[1000],"mcp_allowed_gids":[1000]}`)
+	newData := []byte(`{"log_level":"debug","max_download_bytes":2147483648,"disable_cross_device_check":true,"default_shm_size_mb":128,"download_timeout":"10m","watchdog_timeout":"120s","watchdog_check_interval":"10s","mcp_allowed_uids":[1000],"mcp_allowed_gids":[1000],"seccomp_strategy":"whitelist","overlay_strategy":"overlayfs"}`)
 	require.NoError(t, os.WriteFile(configFile, newData, 0644))
 
 	// 等待文件系统时间更新（不同文件系统精度不同）
@@ -67,6 +67,8 @@ func TestConfigReloadIfChanged(t *testing.T) {
 	assert.Equal(t, int64(2147483648), loaded.MaxDownloadBytes)
 	assert.Equal(t, "debug", loaded.LogLevel)
 	assert.Equal(t, []uint32{1000}, loaded.MCPAllowedUIDs)
+	assert.Equal(t, "whitelist", loaded.SeccompStrategy)
+	assert.Equal(t, "overlayfs", loaded.OverlayStrategy)
 }
 
 func TestConfigOnReloadCallback(t *testing.T) {
@@ -85,7 +87,7 @@ func TestConfigOnReloadCallback(t *testing.T) {
 
 	// 修改配置
 	configFile := filepath.Join(tmpDir, "config.json")
-	newData := []byte(`{"log_level":"warn","max_download_bytes":1073741824,"disable_cross_device_check":false,"default_shm_size_mb":256,"download_timeout":"3m","watchdog_timeout":"30s","watchdog_check_interval":"3s","mcp_allowed_uids":[],"mcp_allowed_gids":[]}`)
+	newData := []byte(`{"log_level":"warn","max_download_bytes":1073741824,"disable_cross_device_check":false,"default_shm_size_mb":256,"download_timeout":"3m","watchdog_timeout":"30s","watchdog_check_interval":"3s","mcp_allowed_uids":[],"mcp_allowed_gids":[],"seccomp_strategy":"blacklist","overlay_strategy":"overlayfs"}`)
 	require.NoError(t, os.WriteFile(configFile, newData, 0644))
 
 	// 等待文件系统时间更新（不同文件系统精度不同）
@@ -96,6 +98,8 @@ func TestConfigOnReloadCallback(t *testing.T) {
 	assert.True(t, called)
 	assert.NotNil(t, newCfg)
 	assert.Equal(t, 256, newCfg.DefaultShmSizeMB)
+	assert.Equal(t, "blacklist", newCfg.SeccompStrategy)
+	assert.Equal(t, "overlayfs", newCfg.OverlayStrategy)
 }
 
 func TestConfigValidate(t *testing.T) {

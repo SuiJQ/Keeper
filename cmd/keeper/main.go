@@ -401,9 +401,25 @@ func runAgentCommand(cfg *config.Config, args []string) error {
 			wd.UpdateCheckInterval(newInterval)
 		}
 
+		// 更新容器策略配置
+		if bc, ok := c.(*container.BwrapContainer); ok {
+			if seccompStrat, err := container.NewSeccompStrategy(newCfg.SeccompStrategy, logger); err != nil {
+				logger.Warn("invalid seccomp strategy, using default", log.Field{Key: "error", Value: err.Error()})
+			} else {
+				bc.SetSeccompStrategy(seccompStrat)
+			}
+			if overlayStrat, err := container.NewOverlayStrategy(newCfg.OverlayStrategy, logger); err != nil {
+				logger.Warn("invalid overlay strategy, using default", log.Field{Key: "error", Value: err.Error()})
+			} else {
+				bc.SetOverlayStrategy(overlayStrat)
+			}
+		}
+
 		logger.Info("configuration reloaded",
 			log.Field{Key: "shm_size_mb", Value: newCfg.DefaultShmSizeMB},
-			log.Field{Key: "watchdog_timeout", Value: newCfg.WatchdogTimeout})
+			log.Field{Key: "watchdog_timeout", Value: newCfg.WatchdogTimeout},
+			log.Field{Key: "seccomp_strategy", Value: newCfg.SeccompStrategy},
+			log.Field{Key: "overlay_strategy", Value: newCfg.OverlayStrategy})
 	})
 
 	// 注册 Agent 到看门狗

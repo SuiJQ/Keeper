@@ -82,6 +82,8 @@ func DefaultConfig() *Config {
 		WatchdogCheckInterval:   "5s",
 		MCPAllowedUIDs:          []uint32{},
 		MCPAllowedGIDs:          []uint32{},
+		SeccompStrategy:         "default",
+		OverlayStrategy:         "default",
 	}
 }
 
@@ -202,6 +204,8 @@ func (c *Config) ReloadIfChanged() error {
 	c.WatchdogCheckInterval = newCfg.WatchdogCheckInterval
 	c.MCPAllowedUIDs = newCfg.MCPAllowedUIDs
 	c.MCPAllowedGIDs = newCfg.MCPAllowedGIDs
+	c.SeccompStrategy = newCfg.SeccompStrategy
+	c.OverlayStrategy = newCfg.OverlayStrategy
 	c.modTime = info.ModTime()
 
 	// 触发回调
