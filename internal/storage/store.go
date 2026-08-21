@@ -92,6 +92,7 @@ type SnapshotMeta struct {
 	UpperSize  int64     `json:"upper_size_bytes"`
 	WorkSize   int64     `json:"workspace_size_bytes"`
 	Files      int       `json:"files_count"`
+	Incremental bool     `json:"incremental,omitempty"`
 }
 
 // fileStore 基于文件系统的存储实现
@@ -387,6 +388,7 @@ func (s *fileStore) CreateSnapshot(ctx context.Context, name, snapshotID string,
 		UpperSize:  upperSize,
 		WorkSize:   workspaceSize,
 		Files:      files,
+		Incremental: parentID != "", // 有父快照则为增量快照
 	}
 	metaJSON, _ := json.Marshal(meta)
 	if err := os.WriteFile(filepath.Join(backupsDir, "meta.json"), metaJSON, 0600); err != nil {

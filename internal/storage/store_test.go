@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -240,6 +241,54 @@ func TestRollbackSnapshot(t *testing.T) {
 	content, err := os.ReadFile(upperFile)
 	require.NoError(t, err)
 	assert.Equal(t, []byte("original"), content)
+}
+
+// TestCreateSnapshotIncremental 测试增量快照元数据
+func TestCreateSnapshotIncremental(t *testing.T) {
+	tmpDir := t.TempDir()
+	store, err := NewStore(tmpDir)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	_, err = store.CreateAgent(ctx, "test-agent", 64, 1024*1024*1024)
+	require.NoError(t, err)
+
+	// 写入初始文件
+	upperFile := filepath.Join(tmpDir, "agents", "test-agent", "upper", "data.txt")
+	err = os.WriteFile(upperFile, []byte("original"), 0644)
+	require.NoError(t, err)
+
+	// 创建第一个快照（完整快照，非增量）
+	err = store.CreateSnapshot(ctx, "test-agent", "snap1", gzip.DefaultCompression)
+	require.NoError(t, err)
+
+	// 修改文件
+	err = os.WriteFile(upperFile, []byte("modified"), 0644)
+	require.NoError(t, err)
+
+	// 创建第二个快照（增量快照，有父快照）
+	err = store.CreateSnapshot(ctx, "test-agent", "snap2", gzip.DefaultCompression)
+	require.NoError(t, err)
+
+	// 验证第一个快照不是增量快照
+	snap1Dir := filepath.Join(tmpDir, "agents", "test-agent", "backups", "snap1")
+	snap1MetaFile := filepath.Join(snap1Dir, "meta.json")
+	snap1MetaBytes, err := os.ReadFile(snap1MetaFile)
+	require.NoError(t, err)
+	var snap1Meta SnapshotMeta
+	require.NoError(t, json.Unmarshal(snap1MetaBytes, &snap1Meta))
+	assert.False(t, snap1Meta.Incremental)
+	assert.Empty(t, snap1Meta.ParentID)
+
+	// 验证第二个快照是增量快照
+	snap2Dir := filepath.Join(tmpDir, "agents", "test-agent", "backups", "snap2")
+	snap2MetaFile := filepath.Join(snap2Dir, "meta.json")
+	snap2MetaBytes, err := os.ReadFile(snap2MetaFile)
+	require.NoError(t, err)
+	var snap2Meta SnapshotMeta
+	require.NoError(t, json.Unmarshal(snap2MetaBytes, &snap2Meta))
+	assert.True(t, snap2Meta.Incremental)
+	assert.Equal(t, "snap1", snap2Meta.ParentID)
 }
 
 func TestPruneCache(t *testing.T) {
