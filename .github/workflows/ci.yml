@@ -41,7 +41,7 @@ jobs:
         run: go version
 
       - name: Run unit tests
-        run: go test -v -timeout 15m -count=1 ./internal/mcp/
+        run: go test ./...
 
       - name: Build binary
         run: go build -o bin/keeper ./cmd/keeper
