@@ -144,26 +144,22 @@ func TestMCPEndToEndAuth(t *testing.T) {
 	encoder := json.NewEncoder(conn)
 	decoder := json.NewDecoder(conn)
 
-	// 发送初始化请求（应该被拒绝）
+	// 发送初始化请求（服务器会拒绝连接并关闭）
 	initReq := Request{
 		JSONRPC: "2.0",
 		ID:      float64(1),
 		Method:  "initialize",
 		Params:  map[string]interface{}{},
 	}
+	// 注意：Encode 可能成功（数据写入缓冲区），但 Decode 会失败（连接被关闭）
 	err = encoder.Encode(initReq)
-	require.NoError(t, err)
-
-	// 读取响应（连接被拒绝，会收到错误响应或连接重置）
-	var initResp Response
-	err = decoder.Decode(&initResp)
-	if err != nil {
-		// 连接被重置，视为授权成功
-		return
+	if err == nil {
+		// 如果 Encode 成功，尝试读取响应应该失败
+		var initResp Response
+		err = decoder.Decode(&initResp)
 	}
-
-	assert.NotNil(t, initResp.Error)
-	assert.Contains(t, initResp.Error.Message, "not allowed")
+	// 连接被拒绝，最终应该返回错误
+	assert.Error(t, err)
 }
 
 // TestMCPEndToEndShutdown 测试 MCP Server 关闭流程
