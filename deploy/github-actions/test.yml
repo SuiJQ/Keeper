@@ -11,11 +11,12 @@ jobs:
     name: Test on ${{ matrix.os }} / Go ${{ matrix.go }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-20.04, ubuntu-22.04, ubuntu-24.04]
+        os: [ubuntu-20.04, ubuntu-22.04, ubuntu-24.04, alpine-latest]
         go: ['1.21', '1.22']
         exclude:
-          # 暂时排除 20.04，因为内核太旧
+          # 暂时排除 20.04 + Go 1.22 组合，因为 Go 1.22 在 20.04 上可能有兼容性问题
           - os: ubuntu-20.04
             go: '1.22'
 
