@@ -436,3 +436,86 @@ func TestAgentCopyEndToEndInvalidSource(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
 }
+
+// TestAgentListEndToEnd 测试 list 命令端到端
+func TestAgentListEndToEnd(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	// 1. 空列表
+	err = listAgents(cfg, []string{})
+	require.NoError(t, err)
+
+	// 2. 创建几个 Agent
+	agentNames := []string{"list-agent-1", "list-agent-2", "list-agent-3"}
+	for _, name := range agentNames {
+		err = createAgent(cfg, []string{name})
+		require.NoError(t, err)
+	}
+
+	// 3. 列出所有 Agent
+	err = listAgents(cfg, []string{})
+	require.NoError(t, err)
+
+	// 4. 销毁 Agent
+	for _, name := range agentNames {
+		err = destroyAgent(cfg, []string{name})
+		require.NoError(t, err)
+	}
+}
+
+// TestAgentInspectEndToEnd 测试 inspect 命令端到端
+func TestAgentInspectEndToEnd(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	agentName := "inspect-agent"
+
+	// 1. 创建 Agent
+	err = createAgent(cfg, []string{agentName})
+	require.NoError(t, err)
+
+	// 2. 查看 Agent 信息
+	err = inspectAgent(cfg, []string{agentName})
+	require.NoError(t, err)
+
+	// 3. 查看不存在的 Agent（应该返回错误）
+	err = inspectAgent(cfg, []string{"nonexistent"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
+
+	// 4. 销毁 Agent
+	err = destroyAgent(cfg, []string{agentName})
+	require.NoError(t, err)
+}
+
+// TestAgentDestroyEndToEnd 测试 destroy 命令端到端
+func TestAgentDestroyEndToEnd(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	agentName := "destroy-agent"
+
+	// 1. 创建 Agent
+	err = createAgent(cfg, []string{agentName})
+	require.NoError(t, err)
+
+	// 2. 销毁 Agent
+	err = destroyAgent(cfg, []string{agentName})
+	require.NoError(t, err)
+
+	// 3. 再次销毁（应该成功，因为 destroy 是幂等的）
+	err = destroyAgent(cfg, []string{agentName})
+	require.NoError(t, err)
+}
+
+
