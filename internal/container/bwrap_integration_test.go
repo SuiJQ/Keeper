@@ -2,6 +2,7 @@ package container
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -573,7 +574,98 @@ func TestBwrapContainerBuildArgsWithWorkspace(t *testing.T) {
 	assert.Empty(t, bpfFile)
 }
 
-// testLogger 测试用日志记录器
+// TestBwrapContainerBuildArgsWithStrategies 测试 buildArgs 中策略集成
+func TestBwrapContainerBuildArgsWithStrategies(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "keeper-bwrap-test-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	rootfs := filepath.Join(tmpDir, "rootfs")
+	upper := filepath.Join(tmpDir, "upper")
+	work := filepath.Join(tmpDir, "work")
+	workspace := filepath.Join(tmpDir, "workspace")
+	require.NoError(t, os.MkdirAll(rootfs, 0755))
+	require.NoError(t, os.MkdirAll(upper, 0755))
+	require.NoError(t, os.MkdirAll(work, 0755))
+	require.NoError(t, os.MkdirAll(workspace, 0755))
+
+	// 创建带自定义策略的容器
+	c := &BwrapContainer{
+		name:   "strategy-test",
+		logger: &testLogger{},
+		networkStrat: &CustomNetworkStrategy{
+			nameservers: []string{"1.1.1.1", "8.8.8.8"},
+		},
+		resourceStrat: &CustomResourceStrategy{
+			shmSize: 128,
+		},
+		logStrat: &CustomLogStrategy{
+			level: "debug",
+		},
+	}
+
+	spec := ContainerSpec{
+		Name:      "strategy-test",
+		Rootfs:    rootfs,
+		UpperDir:  upper,
+		WorkDir:   work,
+		Workspace: workspace,
+		ShmSize:   64, // 自定义策略应覆盖此值
+		Envvars:   []string{"KEY=VALUE"},
+	}
+
+	args, bpfFile := c.buildArgs(spec)
+
+	// 验证网络策略参数
+	assert.Contains(t, args, "--setenv=NAMESERVER=1.1.1.1")
+	assert.Contains(t, args, "--setenv=NAMESERVER=8.8.8.8")
+
+	// 验证资源策略参数（自定义策略应覆盖 ShmSize）
+	assert.Contains(t, args, "--shm-size=128m")
+
+	// 验证日志策略参数
+	assert.Contains(t, args, "--log-level=debug")
+
+	// 验证环境变量
+	assert.Contains(t, args, "--setenv=KEY=VALUE")
+
+	// BPF 文件应为空
+	assert.Empty(t, bpfFile)
+}
+
+// CustomNetworkStrategy 自定义网络策略
+type CustomNetworkStrategy struct {
+	nameservers []string
+}
+
+func (s *CustomNetworkStrategy) Name() string { return "custom" }
+func (s *CustomNetworkStrategy) Configure(spec ContainerSpec) ([]string, error) {
+	args := []string{}
+	for _, ns := range s.nameservers {
+		args = append(args, "--setenv=NAMESERVER="+ns)
+	}
+	return args, nil
+}
+
+// CustomResourceStrategy 自定义资源策略
+type CustomResourceStrategy struct {
+	shmSize uint32
+}
+
+func (s *CustomResourceStrategy) Name() string { return "custom" }
+func (s *CustomResourceStrategy) Configure(spec ContainerSpec) ([]string, error) {
+	return []string{fmt.Sprintf("--shm-size=%dm", s.shmSize)}, nil
+}
+
+// CustomLogStrategy 自定义日志策略
+type CustomLogStrategy struct {
+	level string
+}
+
+func (s *CustomLogStrategy) Name() string { return "custom" }
+func (s *CustomLogStrategy) Configure(spec ContainerSpec) ([]string, error) {
+	return []string{"--log-level=" + s.level}, nil
+}
 type testLogger struct{}
 
 func (l *testLogger) Debug(msg string, fields ...log.Field)     {}
