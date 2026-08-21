@@ -86,6 +86,9 @@ func run() error {
 		return snapshotAgent(cfg, args)
 	case "rollback":
 		return rollbackAgent(cfg, args)
+	case "metrics":
+		fmt.Println(metrics.PrometheusFormat())
+		return nil
 	case "version":
 		fmt.Printf("keeper %s\n", version)
 		return nil

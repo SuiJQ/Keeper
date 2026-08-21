@@ -10,6 +10,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"keeper/internal/container"
+	"keeper/internal/metrics"
 	"keeper/internal/storage"
 	"keeper/pkg/config"
 )
@@ -748,4 +750,21 @@ func TestStatusAgentNotFound(t *testing.T) {
 	assert.Error(t, err)
 	// 错误信息可能被包装过
 	assert.Contains(t, err.Error(), "nonexistent")
+}
+
+// TestMetricsCommand 测试 metrics 命令输出
+func TestMetricsCommand(t *testing.T) {
+	// 记录一些指标
+	container.RecordContainerStart("bwrap", "success")
+	container.RecordContainerStop("bwrap", "success")
+	container.SetContainerActive("bwrap", 1)
+
+	// 获取 Prometheus 格式输出
+	output := metrics.PrometheusFormat()
+	
+	// 验证输出包含 Prometheus 格式
+	assert.Contains(t, output, "# HELP")
+	assert.Contains(t, output, "# TYPE")
+	assert.Contains(t, output, "keeper_container_start_total")
+	assert.Contains(t, output, "keeper_container_stop_total")
 }
