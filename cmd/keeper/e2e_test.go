@@ -323,3 +323,116 @@ func TestAgentRecoveryEndToEnd(t *testing.T) {
 	err = destroyAgent(cfg, []string{agentName})
 	require.NoError(t, err)
 }
+
+// TestAgentCopyEndToEndLocalToAgent 测试从本地复制文件到 Agent workspace
+func TestAgentCopyEndToEndLocalToAgent(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	// 1. 创建目标 Agent
+	err = createAgent(cfg, []string{"copy-target"})
+	require.NoError(t, err)
+
+	// 2. 创建本地源文件
+	localSrc := filepath.Join(tmpDir, "local_src.txt")
+	require.NoError(t, os.WriteFile(localSrc, []byte("hello from local"), 0644))
+
+	// 3. 复制文件到 Agent workspace
+	err = copyFile(cfg, []string{localSrc, "copy-target:/dest.txt"})
+	require.NoError(t, err)
+
+	// 4. 验证文件已复制
+	dstFile := filepath.Join(tmpDir, "agents", "copy-target", "workspace", "dest.txt")
+	assert.FileExists(t, dstFile)
+	content, err := os.ReadFile(dstFile)
+	require.NoError(t, err)
+	assert.Equal(t, []byte("hello from local"), content)
+
+	// 5. 销毁 Agent
+	err = destroyAgent(cfg, []string{"copy-target"})
+	require.NoError(t, err)
+}
+
+// TestAgentCopyEndToEndAgentToLocal 测试从 Agent workspace 复制文件到本地
+func TestAgentCopyEndToEndAgentToLocal(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	// 1. 创建源 Agent 并写入文件
+	err = createAgent(cfg, []string{"copy-source"})
+	require.NoError(t, err)
+	srcFile := filepath.Join(tmpDir, "agents", "copy-source", "workspace", "src.txt")
+	require.NoError(t, os.WriteFile(srcFile, []byte("hello from agent"), 0644))
+
+	// 2. 复制文件到本地
+	localDst := filepath.Join(tmpDir, "local_dst.txt")
+	err = copyFile(cfg, []string{"copy-source:/src.txt", localDst})
+	require.NoError(t, err)
+
+	// 3. 验证文件已复制
+	assert.FileExists(t, localDst)
+	content, err := os.ReadFile(localDst)
+	require.NoError(t, err)
+	assert.Equal(t, []byte("hello from agent"), content)
+
+	// 4. 销毁 Agent
+	err = destroyAgent(cfg, []string{"copy-source"})
+	require.NoError(t, err)
+}
+
+// TestAgentCopyEndToEndRecursive 测试递归复制目录
+func TestAgentCopyEndToEndRecursive(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	// 1. 创建目标 Agent
+	err = createAgent(cfg, []string{"copy-dir-target"})
+	require.NoError(t, err)
+
+	// 2. 创建本地源目录
+	localSrcDir := filepath.Join(tmpDir, "local_src_dir")
+	os.MkdirAll(filepath.Join(localSrcDir, "sub"), 0755)
+	require.NoError(t, os.WriteFile(filepath.Join(localSrcDir, "file1.txt"), []byte("file1"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(localSrcDir, "sub", "file2.txt"), []byte("file2"), 0644))
+
+	// 3. 递归复制目录到 Agent workspace
+	err = copyFile(cfg, []string{"-r", localSrcDir, "copy-dir-target:/dest_dir"})
+	require.NoError(t, err)
+
+	// 4. 验证目录已复制
+	dstFile1 := filepath.Join(tmpDir, "agents", "copy-dir-target", "workspace", "dest_dir", "file1.txt")
+	dstFile2 := filepath.Join(tmpDir, "agents", "copy-dir-target", "workspace", "dest_dir", "sub", "file2.txt")
+	assert.FileExists(t, dstFile1)
+	assert.FileExists(t, dstFile2)
+
+	// 5. 销毁 Agent
+	err = destroyAgent(cfg, []string{"copy-dir-target"})
+	require.NoError(t, err)
+}
+
+// TestAgentCopyEndToEndInvalidSource 测试复制到不存在的 Agent
+func TestAgentCopyEndToEndInvalidSource(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	// 创建本地源文件
+	localSrc := filepath.Join(tmpDir, "local_src.txt")
+	require.NoError(t, os.WriteFile(localSrc, []byte("hello"), 0644))
+
+	// 复制到不存在的 Agent 应该返回错误
+	err = copyFile(cfg, []string{localSrc, "nonexistent:/dest.txt"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
+}

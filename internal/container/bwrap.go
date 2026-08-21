@@ -71,10 +71,13 @@ func (f *BwrapFactory) Create(name string) (Container, error) {
 	logger := log.Global().WithFields(log.Field{Key: "container", Value: name})
 	logger.Info("creating bwrap container")
 	return &BwrapContainer{
-		name:         name,
-		logger:       logger,
-		seccompStrat: NewBPFGenerator(logger),
-		overlayStrat: NewOverlayBuilder(logger),
+		name:          name,
+		logger:        logger,
+		seccompStrat:  NewBPFGenerator(logger),
+		overlayStrat:  NewOverlayBuilder(logger),
+		networkStrat:  NewDefaultNetworkStrategy(logger),
+		resourceStrat: NewDefaultResourceStrategy(logger),
+		logStrat:      NewDefaultLogStrategy(logger),
 		status: ContainerStatus{
 			State: "created",
 		},
