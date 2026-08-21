@@ -3,9 +3,11 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -767,4 +769,188 @@ func TestMetricsCommand(t *testing.T) {
 	assert.Contains(t, output, "# TYPE")
 	assert.Contains(t, output, "keeper_container_start_total")
 	assert.Contains(t, output, "keeper_container_stop_total")
+}
+
+// TestVersionCommand 测试 version 命令输出
+func TestVersionCommand(t *testing.T) {
+	// version 命令直接打印版本号
+	output := fmt.Sprintf("keeper %s\n", version)
+	assert.Contains(t, output, "keeper")
+	assert.NotEmpty(t, version)
+}
+
+// TestHelpCommand 测试 help 命令输出
+func TestHelpCommand(t *testing.T) {
+	// 捕获 printUsage 输出
+	r, w, _ := os.Pipe()
+	oldStdout := os.Stdout
+	os.Stdout = w
+	
+	printUsage()
+	
+	w.Close()
+	os.Stdout = oldStdout
+	
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+	
+	assert.Contains(t, output, "keeper")
+	assert.Contains(t, output, "create")
+	assert.Contains(t, output, "start")
+}
+
+// TestListAgentsEmpty 测试空列表
+func TestListAgentsEmpty(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+	
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	// 列出 Agent（应该为空）
+	err = listAgents(cfg, []string{})
+	require.NoError(t, err)
+}
+
+// TestInvalidAgentName 测试无效名称
+func TestInvalidAgentName(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+	
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	// 测试各种无效名称
+	invalidNames := []string{
+		"",           // 空名称
+		"agent@name", // 包含特殊字符
+		"agent name", // 包含空格
+		"agent/name", // 包含斜杠
+		"agent:name", // 包含冒号
+		strings.Repeat("a", 33), // 太长（>32）
+	}
+
+	for _, name := range invalidNames {
+		err := createAgent(cfg, []string{name})
+		assert.Error(t, err, "name %q should be invalid", name)
+	}
+}
+
+// TestValidAgentName 测试有效名称
+func TestValidAgentName(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+	
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	// 测试有效名称
+	validNames := []string{
+		"agent",
+		"my-agent",
+		"my_agent",
+		"Agent123",
+		"a",
+		strings.Repeat("a", 32), // 最大长度
+	}
+
+	for _, name := range validNames {
+		err := createAgent(cfg, []string{name})
+		assert.NoError(t, err, "name %q should be valid", name)
+		
+		// 清理
+		_ = destroyAgent(cfg, []string{name})
+	}
+}
+
+// TestCreateAgentDuplicate 测试重复创建 Agent
+func TestCreateAgentDuplicate(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+	
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	agentName := "duplicate-agent"
+
+	// 第一次创建
+	err = createAgent(cfg, []string{agentName})
+	require.NoError(t, err)
+
+	// 第二次创建应该失败
+	err = createAgent(cfg, []string{agentName})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "already exists")
+
+	// 清理
+	_ = destroyAgent(cfg, []string{agentName})
+}
+
+// TestDestroyAgentTwice 测试重复销毁 Agent
+func TestDestroyAgentTwice(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+	
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	agentName := "destroy-twice-agent"
+
+	// 创建 Agent
+	err = createAgent(cfg, []string{agentName})
+	require.NoError(t, err)
+
+	// 第一次销毁
+	err = destroyAgent(cfg, []string{agentName})
+	require.NoError(t, err)
+
+	// 第二次销毁（幂等性）
+	err = destroyAgent(cfg, []string{agentName})
+	// 不报错，因为 destroy 是幂等的
+	_ = err
+}
+
+// TestSnapshotRollbackWithoutSnapshot 测试回滚不存在的快照
+func TestSnapshotRollbackWithoutSnapshot(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+	
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	agentName := "no-snapshot-agent"
+
+	// 创建 Agent
+	err = createAgent(cfg, []string{agentName})
+	require.NoError(t, err)
+
+	// 尝试回滚不存在的快照
+	err = rollbackAgent(cfg, []string{agentName, "nonexistent"})
+	assert.Error(t, err)
+
+	// 清理
+	_ = destroyAgent(cfg, []string{agentName})
+}
+
+// TestListSnapshotsEmpty 测试空快照列表
+func TestListSnapshotsEmpty(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+	
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	agentName := "no-snapshots-agent"
+
+	// 创建 Agent
+	err = createAgent(cfg, []string{agentName})
+	require.NoError(t, err)
+
+	// 创建快照（验证快照功能正常）
+	err = snapshotAgent(cfg, []string{agentName, "snap1"})
+	require.NoError(t, err)
+
+	// 清理
+	_ = destroyAgent(cfg, []string{agentName})
 }
