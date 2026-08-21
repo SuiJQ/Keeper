@@ -13,8 +13,15 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"keeper/internal/bootstrap"
 	"keeper/internal/log"
 )
+
+// isBwrapSupported 检查当前环境是否支持 bwrap
+func isBwrapSupported() bool {
+	result := bootstrap.ProbeEnvironment()
+	return result.OverlayUserNS && result.BwrapAvailable
+}
 
 // TestBwrapContainerBuildArgs 测试 bwrap 参数构建
 func TestBwrapContainerBuildArgs(t *testing.T) {
@@ -478,9 +485,6 @@ func TestBwrapContainerStatusRunning(t *testing.T) {
 
 // TestBwrapContainerLifecycle 测试 bwrap 容器完整生命周期（依赖检查失败场景）
 func TestBwrapContainerLifecycle(t *testing.T) {
-	// 注意：在当前环境（内核 5.10，无 CONFIG_OVERLAY_FS_USERNS）下，
-	// bwrap 无法真正启动。此测试验证生命周期方法的错误处理路径。
-
 	c := &BwrapContainer{
 		name:   "lifecycle-test",
 		logger: &testLogger{},
@@ -496,40 +500,72 @@ func TestBwrapContainerLifecycle(t *testing.T) {
 		Envvars:  []string{"TEST=1"},
 	}
 
-	// 1. 启动（预期失败）
-	pid, err := c.Start(ctx, spec)
-	assert.Error(t, err)
-	assert.Equal(t, 0, pid)
-	if err != nil {
-		msg := err.Error()
-		assert.True(t,
-			strings.Contains(msg, "bwrap") || strings.Contains(msg, "kernel") || strings.Contains(msg, "CONFIG_OVERLAY_FS_USERNS"),
-			"error should mention bwrap or kernel support: %s", msg)
+	if isBwrapSupported() {
+		// 环境支持：创建必要目录并测试完整生命周期
+		require.NoError(t, os.MkdirAll(spec.Rootfs, 0755))
+		require.NoError(t, os.MkdirAll(spec.UpperDir, 0755))
+		require.NoError(t, os.MkdirAll(spec.WorkDir, 0755))
+
+		// 1. 启动
+		pid, err := c.Start(ctx, spec)
+		require.NoError(t, err)
+		assert.Greater(t, pid, 0)
+
+		// 2. 状态查询
+		status, err := c.Status(ctx)
+		require.NoError(t, err)
+		assert.NotNil(t, status)
+		assert.Equal(t, "running", status.State)
+		assert.Equal(t, pid, status.PID)
+
+		// 3. 执行命令
+		resp, err := c.Exec(ctx, ExecRequest{
+			Command: "echo hello-from-bwrap",
+			Timeout: 5 * time.Second,
+		})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		assert.Equal(t, 0, resp.ExitCode)
+		assert.Contains(t, string(resp.Stdout), "hello-from-bwrap")
+
+		// 4. 停止
+		err = c.Stop(ctx, 5*time.Second)
+		require.NoError(t, err)
+
+		// 5. 关闭
+		err = c.Close()
+		require.NoError(t, err)
+		assert.Equal(t, "destroyed", c.status.State)
+	} else {
+		// 环境不支持：验证错误处理路径
+		pid, err := c.Start(ctx, spec)
+		assert.Error(t, err)
+		assert.Equal(t, 0, pid)
+		if err != nil {
+			msg := err.Error()
+			assert.True(t,
+				strings.Contains(msg, "bwrap") || strings.Contains(msg, "kernel") || strings.Contains(msg, "CONFIG_OVERLAY_FS_USERNS"),
+				"error should mention bwrap or kernel support: %s", msg)
+		}
+
+		status, err := c.Status(ctx)
+		require.NoError(t, err)
+		assert.NotNil(t, status)
+
+		resp, err := c.Exec(ctx, ExecRequest{
+			Command: "echo test",
+			Timeout: 5 * time.Second,
+		})
+		assert.Error(t, err)
+		assert.Nil(t, resp)
+
+		err = c.Stop(ctx, 5*time.Second)
+		require.NoError(t, err)
+
+		err = c.Close()
+		require.NoError(t, err)
+		assert.Equal(t, "destroyed", c.status.State)
 	}
-
-	// 2. 状态查询（应返回当前状态，可能是 created 或空）
-	status, err := c.Status(ctx)
-	require.NoError(t, err)
-	assert.NotNil(t, status)
-	// 状态可能是 created（如果通过 Factory 创建）或空（直接创建）
-	assert.Contains(t, []string{"created", ""}, status.State)
-
-	// 3. 执行命令（应失败）
-	resp, err := c.Exec(ctx, ExecRequest{
-		Command: "echo test",
-		Timeout: 5 * time.Second,
-	})
-	assert.Error(t, err)
-	assert.Nil(t, resp)
-
-	// 4. 停止（静默成功）
-	err = c.Stop(ctx, 5*time.Second)
-	require.NoError(t, err)
-
-	// 5. 关闭（清理）
-	err = c.Close()
-	require.NoError(t, err)
-	assert.Equal(t, "destroyed", c.status.State)
 }
 
 // TestBwrapContainerBuildArgsWithWorkspace 测试带工作区的 buildArgs

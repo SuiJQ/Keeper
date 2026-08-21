@@ -191,3 +191,50 @@ jobs:
         run: |
           PROBE_OUTPUT=$(go run ./internal/bootstrap/probe.go 2>/dev/null || echo '{"error": "probe failed"}')
           echo "Probe result: $PROBE_OUTPUT"
+
+  bwrap-integration:
+    name: bwrap integration tests
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+          cache: true
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap libseccomp-dev libcap-dev
+
+      - name: Check kernel support
+        run: |
+          KERNEL=$(uname -r)
+          echo "Kernel version: $KERNEL"
+          MAJOR=$(echo $KERNEL | cut -d. -f1)
+          MINOR=$(echo $KERNEL | cut -d. -f2)
+          if [ "$MAJOR" -lt 5 ] || ([ "$MAJOR" -eq 5 ] && [ "$MINOR" -lt 11 ]); then
+            echo "WARNING: Kernel < 5.11, skipping bwrap integration tests"
+            echo "SKIP_BWRAP=true" >> $GITHUB_ENV
+          else
+            echo "Kernel >= 5.11, checking CONFIG_OVERLAY_FS_USERNS..."
+            if grep -q "CONFIG_OVERLAY_FS_USERNS=y" /boot/config-$(uname -r) 2>/dev/null || \
+               grep -q "CONFIG_OVERLAY_FS_USERNS=y" /proc/config.gz 2>/dev/null; then
+              echo "CONFIG_OVERLAY_FS_USERNS is enabled"
+              echo "SKIP_BWRAP=false" >> $GITHUB_ENV
+            else
+              echo "WARNING: CONFIG_OVERLAY_FS_USERNS not found, skipping bwrap integration tests"
+              echo "SKIP_BWRAP=true" >> $GITHUB_ENV
+            fi
+          fi
+
+      - name: Run bwrap integration tests
+        if: env.SKIP_BWRAP != 'true'
+        run: go test -v ./internal/container/ -run "Bwrap" -timeout 10m
+
+      - name: Skip bwrap integration tests
+        if: env.SKIP_BWRAP == 'true'
+        run: echo "Skipping bwrap integration tests due to missing kernel support"
