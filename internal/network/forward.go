@@ -151,13 +151,13 @@ func (f *Forwarder) handleConnection(clientConn net.Conn, pf *PortForward) {
 
 	// 连接到容器端口
 	containerAddr := fmt.Sprintf("127.0.0.1:%d", pf.Container)
-	
+
 	// 设置连接超时
 	connectTimeout := pf.ConnectTimeout
 	if connectTimeout <= 0 {
 		connectTimeout = 5 * time.Second
 	}
-	
+
 	containerConn, err := net.DialTimeout("tcp", containerAddr, connectTimeout)
 	if err != nil {
 		f.logger.Warn("connect to container failed",

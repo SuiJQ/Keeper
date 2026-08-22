@@ -15,11 +15,11 @@ func TestForwarderMaxConnections(t *testing.T) {
 
 	// 添加一个端口转发，限制最大连接数为 2
 	pf := &PortForward{
-		Host:            8765,
-		Container:       9000,
-		Protocol:        "tcp",
-		MaxConnections:  2,
-		ConnectTimeout:  100 * time.Millisecond,
+		Host:           8765,
+		Container:      9000,
+		Protocol:       "tcp",
+		MaxConnections: 2,
+		ConnectTimeout: 100 * time.Millisecond,
 	}
 
 	// 模拟一个监听器
@@ -110,11 +110,11 @@ func TestForwarderConnectTimeout(t *testing.T) {
 
 	// 添加一个端口转发，设置连接超时
 	pf := &PortForward{
-		Host:            8766,
-		Container:       9001, // 没有监听在这个端口
-		Protocol:        "tcp",
-		MaxConnections:  0,
-		ConnectTimeout:  100 * time.Millisecond,
+		Host:           8766,
+		Container:      9001, // 没有监听在这个端口
+		Protocol:       "tcp",
+		MaxConnections: 0,
+		ConnectTimeout: 100 * time.Millisecond,
 	}
 
 	// 启动监听
@@ -149,11 +149,11 @@ func TestForwarderNoConnectionLimit(t *testing.T) {
 
 	// 添加一个端口转发，不限制连接数
 	pf := &PortForward{
-		Host:            8767,
-		Container:       9002,
-		Protocol:        "tcp",
-		MaxConnections:  0, // 不限制
-		ConnectTimeout:  100 * time.Millisecond,
+		Host:           8767,
+		Container:      9002,
+		Protocol:       "tcp",
+		MaxConnections: 0, // 不限制
+		ConnectTimeout: 100 * time.Millisecond,
 	}
 
 	// 启动监听
