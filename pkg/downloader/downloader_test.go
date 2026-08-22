@@ -55,9 +55,18 @@ func TestDownloadMultiThread(t *testing.T) {
 	// 创建测试服务器，支持 Range
 	var ranges []string
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = r.Header.Get("Range")
 		ranges = append(ranges, r.Header.Get("Range"))
 		rangeHeader := r.Header.Get("Range")
+
+		// 设置支持 Range
+		w.Header().Set("Accept-Ranges", "bytes")
+		w.Header().Set("Content-Length", "1000")
+
+		if rangeHeader == "" {
+			// HEAD 请求或没有 Range 的 GET 请求
+			w.WriteHeader(http.StatusOK)
+			return
+		}
 
 		var start, end int64
 		if strings.HasPrefix(rangeHeader, "bytes=") {
@@ -70,13 +79,10 @@ func TestDownloadMultiThread(t *testing.T) {
 					end = 999
 				}
 			}
-		} else {
-			// 没有 Range 头，返回全部内容
-			start = 0
-			end = 999
 		}
 
 		w.Header().Set("Content-Length", strconv.FormatInt(end-start+1, 10))
+		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/1000", start, end))
 		w.WriteHeader(http.StatusPartialContent)
 		for i := start; i <= end; i++ {
 			if _, err := w.Write([]byte{byte(i % 256)}); err != nil {
@@ -350,7 +356,7 @@ func TestDownloadUnknownSize(t *testing.T) {
 		w.Header().Del("Content-Length")
 		w.WriteHeader(http.StatusOK)
 		for i := 0; i < 50; i++ {
-			w.Write([]byte{byte(i)})
+			_, _ = w.Write([]byte{byte(i)})
 		}
 	})
 	server := httptest.NewServer(handler)
@@ -379,7 +385,7 @@ func TestDownloadSingleThreadFallback(t *testing.T) {
 		w.Header().Set("Content-Length", "100")
 		w.WriteHeader(http.StatusOK)
 		for i := 0; i < 100; i++ {
-			w.Write([]byte{byte(i)})
+			_, _ = w.Write([]byte{byte(i)})
 		}
 	})
 	server := httptest.NewServer(handler)
@@ -418,7 +424,7 @@ func TestDownloadChunkRetry(t *testing.T) {
 			w.Header().Set("Accept-Ranges", "bytes")
 			w.WriteHeader(http.StatusOK)
 			for i := 0; i < 100; i++ {
-				w.Write([]byte{byte(i)})
+				_, _ = w.Write([]byte{byte(i)})
 			}
 			return
 		}
@@ -427,7 +433,7 @@ func TestDownloadChunkRetry(t *testing.T) {
 		w.Header().Set("Content-Range", fmt.Sprintf("bytes %s/100", rangeHeader[6:]))
 		w.WriteHeader(http.StatusPartialContent)
 		for i := 0; i < 100; i++ {
-			w.Write([]byte{byte(i)})
+			_, _ = w.Write([]byte{byte(i)})
 		}
 	})
 	server := httptest.NewServer(handler)
@@ -453,7 +459,7 @@ func TestDownloadContextCancel(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(100 * time.Millisecond)
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("hello"))
+		_, _ = w.Write([]byte("hello"))
 	})
 	server := httptest.NewServer(handler)
 	defer server.Close()

@@ -726,3 +726,68 @@ func (l *testLogger) WithFields(fields ...log.Field) log.Logger { return l }
 func (l *testLogger) WithTrace(traceID, spanID string) log.Logger { return l }
 func (l *testLogger) Sync() error                               { return nil }
 func (l *testLogger) SetOutput(w io.Writer)                     {}
+
+// TestBwrapContainerSetEnableUserNS 测试 UserNS 配置
+func TestBwrapContainerSetEnableUserNS(t *testing.T) {
+	c := &BwrapContainer{
+		name:          "test-container",
+		logger:        &testLogger{},
+		enableUserNS:  true,  // 设置初始值
+		enableSeccomp: true,
+	}
+
+	// 禁用
+	c.SetEnableUserNS(false)
+	assert.False(t, c.enableUserNS)
+
+	// 重新启用
+	c.SetEnableUserNS(true)
+	assert.True(t, c.enableUserNS)
+}
+
+// TestBwrapContainerSetEnableSeccomp 测试 Seccomp 配置
+func TestBwrapContainerSetEnableSeccomp(t *testing.T) {
+	c := &BwrapContainer{
+		name:          "test-container",
+		logger:        &testLogger{},
+		enableUserNS:  true,
+		enableSeccomp: true,  // 设置初始值
+	}
+
+	// 禁用
+	c.SetEnableSeccomp(false)
+	assert.False(t, c.enableSeccomp)
+
+	// 重新启用
+	c.SetEnableSeccomp(true)
+	assert.True(t, c.enableSeccomp)
+}
+
+// TestBwrapContainerStartNotCreated 测试启动未创建的容器
+func TestBwrapContainerStartNotCreated(t *testing.T) {
+	c := &BwrapContainer{
+		name:          "test-container",
+		logger:        &testLogger{},
+		status:        ContainerStatus{State: "destroyed"},
+		enableUserNS:  true,
+		enableSeccomp: true,
+	}
+
+	ctx := context.Background()
+	spec := ContainerSpec{
+		Name:   "test-container",
+		Rootfs: "/tmp/rootfs",
+	}
+
+	pid, err := c.Start(ctx, spec)
+	// Start 会先检查依赖，在当前环境可能返回依赖错误
+	// 我们只验证返回 pid=0
+	assert.Equal(t, 0, pid)
+	if err != nil {
+		// 依赖错误或状态错误都可以接受
+		msg := err.Error()
+		assert.True(t,
+			strings.Contains(msg, "bwrap") || strings.Contains(msg, "kernel"),
+			"error should mention bwrap or kernel: %s", msg)
+	}
+}

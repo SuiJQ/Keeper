@@ -186,3 +186,108 @@ func TestLoggerJSONFormat(t *testing.T) {
 		t.Errorf("JSON fields[number] = %v, want \"42\"", fields["number"])
 	}
 }
+
+func TestLoggerWithTrace(t *testing.T) {
+	var buf bytes.Buffer
+	logger := New(&buf)
+
+	traceLogger := logger.WithTrace("trace-123", "span-456")
+	traceLogger.Info("trace test", Field{Key: "key", Value: "value"})
+
+	output := buf.String()
+	if !strings.Contains(output, "trace-123") {
+		t.Errorf("Logger.WithTrace() output missing trace_id: %s", output)
+	}
+	if !strings.Contains(output, "span-456") {
+		t.Errorf("Logger.WithTrace() output missing span_id: %s", output)
+	}
+}
+
+func TestLoggerWithTraceOverwrite(t *testing.T) {
+	var buf bytes.Buffer
+	logger := New(&buf)
+
+	// 先设置 trace，再覆盖
+	traceLogger := logger.WithTrace("trace-1", "span-1")
+	traceLogger2 := traceLogger.WithTrace("trace-2", "span-2")
+	traceLogger2.Info("trace test")
+
+	output := buf.String()
+	if strings.Contains(output, "trace-1") {
+		t.Errorf("Logger.WithTrace() should overwrite trace_id: %s", output)
+	}
+	if !strings.Contains(output, "trace-2") {
+		t.Errorf("Logger.WithTrace() output missing new trace_id: %s", output)
+	}
+}
+
+func TestLoggerWithTraceEmpty(t *testing.T) {
+	var buf bytes.Buffer
+	logger := New(&buf)
+
+	// 空 trace ID 不应添加字段
+	traceLogger := logger.WithTrace("", "")
+	traceLogger.Info("no trace test")
+
+	output := buf.String()
+	if strings.Contains(output, "trace_id") {
+		t.Errorf("Logger.WithTrace() should not add empty trace_id: %s", output)
+	}
+	if strings.Contains(output, "span_id") {
+		t.Errorf("Logger.WithTrace() should not add empty span_id: %s", output)
+	}
+}
+
+func TestGenerateTraceID(t *testing.T) {
+	id1 := GenerateTraceID()
+	id2 := GenerateTraceID()
+
+	if len(id1) != 32 { // 16 bytes = 32 hex chars
+		t.Errorf("GenerateTraceID() length = %d, want 32", len(id1))
+	}
+	if len(id2) != 32 {
+		t.Errorf("GenerateTraceID() length = %d, want 32", len(id2))
+	}
+	if id1 == id2 {
+		t.Errorf("GenerateTraceID() should generate unique IDs")
+	}
+}
+
+func TestGenerateSpanID(t *testing.T) {
+	id1 := GenerateSpanID()
+	id2 := GenerateSpanID()
+
+	if len(id1) != 16 { // 8 bytes = 16 hex chars
+		t.Errorf("GenerateSpanID() length = %d, want 16", len(id1))
+	}
+	if len(id2) != 16 {
+		t.Errorf("GenerateSpanID() length = %d, want 16", len(id2))
+	}
+	if id1 == id2 {
+		t.Errorf("GenerateSpanID() should generate unique IDs")
+	}
+}
+
+func TestNextTraceID(t *testing.T) {
+	id1 := NextTraceID()
+	id2 := NextTraceID()
+
+	if len(id1) != 32 {
+		t.Errorf("NextTraceID() length = %d, want 32", len(id1))
+	}
+	if id1 == id2 {
+		t.Errorf("NextTraceID() should generate unique IDs")
+	}
+}
+
+func TestNextSpanID(t *testing.T) {
+	id1 := NextSpanID()
+	id2 := NextSpanID()
+
+	if len(id1) != 16 {
+		t.Errorf("NextSpanID() length = %d, want 16", len(id1))
+	}
+	if id1 == id2 {
+		t.Errorf("NextSpanID() should generate unique IDs")
+	}
+}

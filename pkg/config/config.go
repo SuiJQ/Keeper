@@ -375,6 +375,22 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("invalid overlay_strategy: %s", c.OverlayStrategy)
 	}
 
+	if c.NetworkForwardMaxConnections < 0 {
+		return fmt.Errorf("network_forward_max_connections must be non-negative")
+	}
+
+	if _, err := time.ParseDuration(c.NetworkForwardConnectTimeout); err != nil {
+		return fmt.Errorf("invalid network_forward_connect_timeout: %s", c.NetworkForwardConnectTimeout)
+	}
+
+	if c.StorageMaxSnapshots < 0 {
+		return fmt.Errorf("storage_max_snapshots must be non-negative")
+	}
+
+	if _, err := time.ParseDuration(c.StoragePruneInterval); err != nil {
+		return fmt.Errorf("invalid storage_prune_interval: %s", c.StoragePruneInterval)
+	}
+
 	return nil
 }
 
