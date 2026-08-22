@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -317,6 +318,92 @@ func TestPruneCache(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, deleted, "unused-cache")
 	assert.NotContains(t, deleted, "used-cache")
+}
+
+func TestPruneSnapshots(t *testing.T) {
+	tmpDir := t.TempDir()
+	store, err := NewStore(tmpDir)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	_, err = store.CreateAgent(ctx, "test-agent", 64, 1024*1024*1024)
+	require.NoError(t, err)
+
+	// 创建 5 个快照
+	for i := 0; i < 5; i++ {
+		snapshotID := fmt.Sprintf("snapshot-%d", i)
+		err := store.CreateSnapshot(ctx, "test-agent", snapshotID, 6)
+		require.NoError(t, err)
+	}
+
+	// 验证有 5 个快照
+	snapshots, err := store.ListSnapshots(ctx, "test-agent")
+	require.NoError(t, err)
+	assert.Len(t, snapshots, 5)
+
+	// 保留最近 3 个
+	deleted, err := store.PruneSnapshots(ctx, "test-agent", 3)
+	require.NoError(t, err)
+	assert.Len(t, deleted, 2) // 应该删除 2 个最旧的
+
+	// 验证剩余快照
+	snapshots, err = store.ListSnapshots(ctx, "test-agent")
+	require.NoError(t, err)
+	assert.Len(t, snapshots, 3)
+}
+
+func TestPruneSnapshotsKeepAll(t *testing.T) {
+	tmpDir := t.TempDir()
+	store, err := NewStore(tmpDir)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	_, err = store.CreateAgent(ctx, "test-agent", 64, 1024*1024*1024)
+	require.NoError(t, err)
+
+	// 创建 3 个快照
+	for i := 0; i < 3; i++ {
+		snapshotID := fmt.Sprintf("snapshot-%d", i)
+		err := store.CreateSnapshot(ctx, "test-agent", snapshotID, 6)
+		require.NoError(t, err)
+	}
+
+	// 保留 5 个（多于实际数量）
+	deleted, err := store.PruneSnapshots(ctx, "test-agent", 5)
+	require.NoError(t, err)
+	assert.Empty(t, deleted) // 不应该删除任何快照
+
+	// 验证所有快照仍然存在
+	snapshots, err := store.ListSnapshots(ctx, "test-agent")
+	require.NoError(t, err)
+	assert.Len(t, snapshots, 3)
+}
+
+func TestPruneSnapshotsNoLimit(t *testing.T) {
+	tmpDir := t.TempDir()
+	store, err := NewStore(tmpDir)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	_, err = store.CreateAgent(ctx, "test-agent", 64, 1024*1024*1024)
+	require.NoError(t, err)
+
+	// 创建 3 个快照
+	for i := 0; i < 3; i++ {
+		snapshotID := fmt.Sprintf("snapshot-%d", i)
+		err := store.CreateSnapshot(ctx, "test-agent", snapshotID, 6)
+		require.NoError(t, err)
+	}
+
+	// keepCount = 0 表示不限制
+	deleted, err := store.PruneSnapshots(ctx, "test-agent", 0)
+	require.NoError(t, err)
+	assert.Empty(t, deleted) // 不应该删除任何快照
+
+	// 验证所有快照仍然存在
+	snapshots, err := store.ListSnapshots(ctx, "test-agent")
+	require.NoError(t, err)
+	assert.Len(t, snapshots, 3)
 }
 
 func TestAgentMetaPaths(t *testing.T) {

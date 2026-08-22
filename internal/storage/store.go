@@ -48,6 +48,9 @@ type Store interface {
 
 	// PruneCache 清理未引用的 rootfs 缓存
 	PruneCache(ctx context.Context, dryRun bool) ([]string, error)
+
+	// PruneSnapshots 清理旧快照（保留最近 N 个）
+	PruneSnapshots(ctx context.Context, name string, keepCount int) ([]string, error)
 }
 
 // AgentMeta Agent 元数据
@@ -511,6 +514,54 @@ func (s *fileStore) PruneCache(ctx context.Context, dryRun bool) ([]string, erro
 	}
 	RecordCachePrune(result)
 	RecordCachePruneDuration(time.Since(startTime).Seconds())
+	return deleted, nil
+}
+
+// PruneSnapshots 清理旧快照（保留最近 N 个）
+func (s *fileStore) PruneSnapshots(ctx context.Context, name string, keepCount int) ([]string, error) {
+	startTime := time.Now()
+
+	// keepCount <= 0 表示不限制
+	if keepCount <= 0 {
+		return nil, nil
+	}
+
+	snapshots, err := s.ListSnapshots(ctx, name)
+	if err != nil {
+		return nil, fmt.Errorf("list snapshots: %w", err)
+	}
+
+	// 如果快照数量未超过限制，无需清理
+	if len(snapshots) <= keepCount {
+		return nil, nil
+	}
+
+	// 按创建时间排序（最新的在前）
+	sort.Slice(snapshots, func(i, j int) bool {
+		return snapshots[i].CreatedAt.After(snapshots[j].CreatedAt)
+	})
+
+	// 需要删除的快照（跳过前 keepCount 个）
+	toDelete := snapshots[keepCount:]
+
+	agentPath := s.agentDir(name)
+	var deleted []string
+
+	for _, meta := range toDelete {
+		snapshotDir := filepath.Join(agentPath, "backups", meta.SnapshotID)
+		if err := os.RemoveAll(snapshotDir); err != nil {
+			RecordSnapshotPrune("error")
+			return deleted, fmt.Errorf("delete snapshot %s: %w", meta.SnapshotID, err)
+		}
+		deleted = append(deleted, meta.SnapshotID)
+	}
+
+	result := "success"
+	if len(deleted) == 0 {
+		result = "noop"
+	}
+	RecordSnapshotPrune(result)
+	RecordSnapshotPruneDuration(time.Since(startTime).Seconds())
 	return deleted, nil
 }
 
