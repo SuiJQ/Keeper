@@ -2,9 +2,11 @@ package downloader
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -288,4 +290,200 @@ func TestDownloadWithInvalidURL(t *testing.T) {
 
 	err := DownloadFile(context.Background(), "http://invalid.url.that.does.not.exist:12345/test", tmpFile)
 	assert.Error(t, err)
+}
+
+func TestDownloadFileConvenience(t *testing.T) {
+	// 创建测试服务器
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "100")
+		w.WriteHeader(http.StatusOK)
+		for i := 0; i < 100; i++ {
+			if _, err := w.Write([]byte{byte(i)}); err != nil {
+				break
+			}
+		}
+	}))
+	defer ts.Close()
+
+	tmpFile := filepath.Join(t.TempDir(), "downloaded.bin")
+
+	err := DownloadFile(context.Background(), ts.URL+"/100bytes", tmpFile)
+	assert.NoError(t, err)
+
+	data, err := os.ReadFile(tmpFile)
+	assert.NoError(t, err)
+	assert.Equal(t, 100, len(data))
+}
+
+func TestDownloadFileWithProgressCallback(t *testing.T) {
+	// 创建测试服务器
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "100")
+		w.WriteHeader(http.StatusOK)
+		for i := 0; i < 100; i++ {
+			if _, err := w.Write([]byte{byte(i)}); err != nil {
+				break
+			}
+		}
+	}))
+	defer ts.Close()
+
+	tmpFile := filepath.Join(t.TempDir(), "downloaded.bin")
+	var progressCalled bool
+	var lastDownloaded int64
+
+	err := DownloadFileWithProgress(context.Background(), ts.URL+"/100bytes", tmpFile, func(downloaded, total int64) {
+		progressCalled = true
+		lastDownloaded = downloaded
+	})
+	assert.NoError(t, err)
+	assert.True(t, progressCalled, "progress callback should be called")
+	assert.Equal(t, int64(100), lastDownloaded)
+}
+
+func TestDownloadUnknownSize(t *testing.T) {
+	tmpFile := filepath.Join(t.TempDir(), "downloaded.bin")
+
+	// 使用一个返回 Content-Length: -1 或缺少 Content-Length 的服务器
+	// 这里使用 echo handler 返回动态内容
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Del("Content-Length")
+		w.WriteHeader(http.StatusOK)
+		for i := 0; i < 50; i++ {
+			w.Write([]byte{byte(i)})
+		}
+	})
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	downloader := NewDownloader(&Config{
+		URL:        server.URL,
+		OutputPath: tmpFile,
+		Threads:    2,
+	}, nil)
+
+	err := downloader.Download(context.Background())
+	assert.NoError(t, err)
+
+	data, err := os.ReadFile(tmpFile)
+	assert.NoError(t, err)
+	assert.Equal(t, 50, len(data))
+}
+
+func TestDownloadSingleThreadFallback(t *testing.T) {
+	tmpFile := filepath.Join(t.TempDir(), "downloaded.bin")
+
+	// 创建一个不支持 Range 的服务器
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Accept-Ranges", "none")
+		w.Header().Set("Content-Length", "100")
+		w.WriteHeader(http.StatusOK)
+		for i := 0; i < 100; i++ {
+			w.Write([]byte{byte(i)})
+		}
+	})
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	downloader := NewDownloader(&Config{
+		URL:        server.URL,
+		OutputPath: tmpFile,
+		Threads:    4,
+	}, nil)
+
+	err := downloader.Download(context.Background())
+	assert.NoError(t, err)
+
+	data, err := os.ReadFile(tmpFile)
+	assert.NoError(t, err)
+	assert.Equal(t, 100, len(data))
+}
+
+func TestDownloadChunkRetry(t *testing.T) {
+	tmpFile := filepath.Join(t.TempDir(), "downloaded.bin")
+
+	requestCount := 0
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		
+		// 支持 Range 请求
+		rangeHeader := r.Header.Get("Range")
+		if rangeHeader == "" {
+			// HEAD 或 GET 请求（获取文件信息）
+			if requestCount <= 2 {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Length", "100")
+			w.Header().Set("Accept-Ranges", "bytes")
+			w.WriteHeader(http.StatusOK)
+			for i := 0; i < 100; i++ {
+				w.Write([]byte{byte(i)})
+			}
+			return
+		}
+		
+		// Range 请求
+		w.Header().Set("Content-Range", fmt.Sprintf("bytes %s/100", rangeHeader[6:]))
+		w.WriteHeader(http.StatusPartialContent)
+		for i := 0; i < 100; i++ {
+			w.Write([]byte{byte(i)})
+		}
+	})
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	downloader := NewDownloader(&Config{
+		URL:        server.URL,
+		OutputPath: tmpFile,
+		Threads:    1,
+		MaxRetries: 3,
+		RetryDelay: 10 * time.Millisecond,
+	}, nil)
+
+	err := downloader.Download(context.Background())
+	assert.NoError(t, err)
+	// 验证请求次数（前2次失败，第3次成功）
+	assert.GreaterOrEqual(t, requestCount, 3, "should have at least 3 requests")
+}
+
+func TestDownloadContextCancel(t *testing.T) {
+	tmpFile := filepath.Join(t.TempDir(), "downloaded.bin")
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(100 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("hello"))
+	})
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // 立即取消
+
+	downloader := NewDownloader(&Config{
+		URL:        server.URL,
+		OutputPath: tmpFile,
+		Threads:    1,
+	}, nil)
+
+	err := downloader.Download(ctx)
+	assert.Error(t, err)
+	assert.Equal(t, context.Canceled, err)
+}
+
+func TestDownloadConfigDefaults(t *testing.T) {
+	config := DefaultConfig()
+	assert.Equal(t, 4, config.Threads)
+	assert.Equal(t, int64(1024*1024), config.ChunkSize)
+	assert.Equal(t, 30*time.Second, config.Timeout)
+	assert.Equal(t, 3, config.MaxRetries)
+	assert.Equal(t, 2*time.Second, config.RetryDelay)
+}
+
+func TestNewDownloaderWithNilConfig(t *testing.T) {
+	downloader := NewDownloader(nil, nil)
+	assert.NotNil(t, downloader)
+	assert.NotNil(t, downloader.config)
+	assert.Equal(t, 4, downloader.config.Threads)
 }

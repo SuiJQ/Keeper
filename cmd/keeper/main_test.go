@@ -755,6 +755,123 @@ func TestStatusAgentNotFound(t *testing.T) {
 	assert.Contains(t, err.Error(), "nonexistent")
 }
 
+func TestStartAgentAlreadyRunning(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	// 创建 agent
+	require.NoError(t, createAgent(cfg, []string{"test-agent"}))
+
+	// 设置状态为 running
+	store, _ := storage.NewStore(cfg.Home)
+	meta, _ := store.GetAgent(context.Background(), "test-agent")
+	meta.State = "running"
+	meta.PID = os.Getpid()
+	_ = store.UpdateAgent(context.Background(), meta)
+
+	// 尝试启动已运行的 agent
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err = startAgent(cfg, []string{"test-agent"})
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	// 应该返回 nil（已运行状态是幂等的）
+	assert.NoError(t, err)
+
+	// 验证输出
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+	assert.Contains(t, output, "already running")
+}
+
+func TestStopAgentAlreadyStopped(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	// 创建 agent
+	require.NoError(t, createAgent(cfg, []string{"test-agent"}))
+
+	// 设置状态为 stopped
+	store, _ := storage.NewStore(cfg.Home)
+	meta, _ := store.GetAgent(context.Background(), "test-agent")
+	meta.State = "stopped"
+	_ = store.UpdateAgent(context.Background(), meta)
+
+	// 尝试停止已停止的 agent
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err = stopAgent(cfg, []string{"test-agent"})
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	// 应该返回 nil（已停止状态是幂等的）
+	assert.NoError(t, err)
+
+	// 验证输出
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+	assert.Contains(t, output, "already stopped")
+}
+
+func TestStartAgentInvalidState(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	// 创建 agent
+	require.NoError(t, createAgent(cfg, []string{"test-agent"}))
+
+	// 设置无效状态
+	store, _ := storage.NewStore(cfg.Home)
+	meta, _ := store.GetAgent(context.Background(), "test-agent")
+	meta.State = "fatal_bwrap_exec" // 无效状态
+	_ = store.UpdateAgent(context.Background(), meta)
+
+	// 尝试启动应该失败
+	err = startAgent(cfg, []string{"test-agent"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot start agent in state: fatal_bwrap_exec")
+}
+
+func TestStopAgentInvalidState(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	// 创建 agent
+	require.NoError(t, createAgent(cfg, []string{"test-agent"}))
+
+	// 设置无效状态
+	store, _ := storage.NewStore(cfg.Home)
+	meta, _ := store.GetAgent(context.Background(), "test-agent")
+	meta.State = "fatal_bwrap_exec" // 无效状态
+	_ = store.UpdateAgent(context.Background(), meta)
+
+	// 尝试停止应该失败
+	err = stopAgent(cfg, []string{"test-agent"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot stop agent in state: fatal_bwrap_exec")
+}
+
 // TestMetricsCommand 测试 metrics 命令输出
 func TestMetricsCommand(t *testing.T) {
 	// 记录一些指标
