@@ -1,10 +1,8 @@
-name: CI
+name: CI Nightly
 
 on:
-  push:
-    branches: [ main, develop ]
-  pull_request:
-    branches: [ main, develop ]
+  schedule:
+    - cron: '0 0 * * *'  # 每天 UTC 00:00 运行
   workflow_dispatch:
 
 jobs:
@@ -14,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04]
+        os: [ubuntu-20.04, ubuntu-22.04, ubuntu-24.04, alpine-latest]
 
     steps:
       - name: Checkout code
