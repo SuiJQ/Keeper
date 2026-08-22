@@ -19,7 +19,10 @@ func TestDownloadSingleThread(t *testing.T) {
 		w.Header().Set("Content-Length", "100")
 		w.WriteHeader(http.StatusOK)
 		for i := 0; i < 100; i++ {
-			w.Write([]byte{byte(i)})
+			if _, err := w.Write([]byte{byte(i)}); err != nil {
+				t.Logf("write error: %v", err)
+				break
+			}
 		}
 	}))
 	defer ts.Close()
@@ -74,7 +77,10 @@ func TestDownloadMultiThread(t *testing.T) {
 		w.Header().Set("Content-Length", strconv.FormatInt(end-start+1, 10))
 		w.WriteHeader(http.StatusPartialContent)
 		for i := start; i <= end; i++ {
-			w.Write([]byte{byte(i % 256)})
+			if _, err := w.Write([]byte{byte(i % 256)}); err != nil {
+				t.Logf("write error: %v", err)
+				break
+			}
 		}
 	}))
 	defer ts.Close()
@@ -110,7 +116,10 @@ func TestDownloadWithProgress(t *testing.T) {
 		w.Header().Set("Content-Length", "100")
 		w.WriteHeader(http.StatusOK)
 		for i := 0; i < 100; i++ {
-			w.Write([]byte{byte(i)})
+			if _, err := w.Write([]byte{byte(i)}); err != nil {
+				t.Logf("write error: %v", err)
+				break
+			}
 		}
 	}))
 	defer ts.Close()
@@ -153,7 +162,10 @@ func TestDownloadWithRetry(t *testing.T) {
 		w.Header().Set("Content-Length", "50")
 		w.WriteHeader(http.StatusOK)
 		for i := 0; i < 50; i++ {
-			w.Write([]byte{byte(i)})
+			if _, err := w.Write([]byte{byte(i)}); err != nil {
+				t.Logf("write error: %v", err)
+				break
+			}
 		}
 	}))
 	defer ts.Close()
@@ -185,7 +197,10 @@ func TestDownloadFile(t *testing.T) {
 		w.Header().Set("Content-Length", "200")
 		w.WriteHeader(http.StatusOK)
 		for i := 0; i < 200; i++ {
-			w.Write([]byte{byte(i % 256)})
+			if _, err := w.Write([]byte{byte(i % 256)}); err != nil {
+				t.Logf("write error: %v", err)
+				break
+			}
 		}
 	}))
 	defer ts.Close()
@@ -206,7 +221,10 @@ func TestDownloadFileWithProgress(t *testing.T) {
 		w.Header().Set("Content-Length", "150")
 		w.WriteHeader(http.StatusOK)
 		for i := 0; i < 150; i++ {
-			w.Write([]byte{byte(i % 256)})
+			if _, err := w.Write([]byte{byte(i % 256)}); err != nil {
+				t.Logf("write error: %v", err)
+				break
+			}
 		}
 	}))
 	defer ts.Close()
@@ -233,7 +251,10 @@ func TestDownloadWithContextCancel(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 		// 缓慢发送数据
 		for i := 0; i < 1000000; i++ {
-			w.Write([]byte{byte(i % 256)})
+			if _, err := w.Write([]byte{byte(i % 256)}); err != nil {
+				t.Logf("write error: %v", err)
+				break
+			}
 			if i%10000 == 0 {
 				time.Sleep(1 * time.Millisecond)
 			}

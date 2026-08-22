@@ -91,7 +91,7 @@ func TestForwarderMaxConnections(t *testing.T) {
 	defer conn.Close()
 
 	// 尝试读取数据，如果连接被拒绝，应该立即返回错误或超时
-	conn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+	_ = conn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
 	buf := make([]byte, 1)
 	_, err = conn.Read(buf)
 	if err == nil {

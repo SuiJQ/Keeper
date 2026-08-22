@@ -684,7 +684,9 @@ func TestAgentFullChainOperations(t *testing.T) {
 
 	agentName := "full-chain-agent"
 	sourceDir := filepath.Join(tmpDir, "source")
-	os.MkdirAll(sourceDir, 0755)
+	if err := os.MkdirAll(sourceDir, 0755); err != nil {
+		t.Fatalf("mkdirall: %v", err)
+	}
 	testFile := filepath.Join(sourceDir, "test.txt")
 	err = os.WriteFile(testFile, []byte("original content"), 0644)
 	require.NoError(t, err)
