@@ -17,6 +17,7 @@ import (
 	"keeper/internal/errors"
 	"keeper/internal/log"
 	"keeper/internal/seccomp"
+	"keeper/pkg/config"
 )
 
 // BwrapContainer bwrap 容器运行时实现
@@ -30,6 +31,11 @@ type BwrapContainer struct {
 	networkStrat  NetworkStrategy
 	resourceStrat ResourceStrategy
 	logStrat      LogStrategy
+
+	// enableUserNS 是否启用 UserNS
+	enableUserNS bool
+	// enableSeccomp 是否启用 Seccomp
+	enableSeccomp bool
 }
 
 // SetSeccompStrategy 设置 Seccomp 策略
@@ -57,6 +63,16 @@ func (c *BwrapContainer) SetLogStrategy(strategy LogStrategy) {
 	c.logStrat = strategy
 }
 
+// SetEnableUserNS 设置是否启用 UserNS
+func (c *BwrapContainer) SetEnableUserNS(enable bool) {
+	c.enableUserNS = enable
+}
+
+// SetEnableSeccomp 设置是否启用 Seccomp
+func (c *BwrapContainer) SetEnableSeccomp(enable bool) {
+	c.enableSeccomp = enable
+}
+
 // BwrapFactory bwrap 容器运行时工厂
 type BwrapFactory struct{}
 
@@ -69,6 +85,17 @@ func NewBwrapFactory() *BwrapFactory {
 func (f *BwrapFactory) Create(name string) (Container, error) {
 	logger := log.Global().WithFields(log.Field{Key: "container", Value: name})
 	logger.Info("creating bwrap container")
+
+	// 默认启用 UserNS 和 Seccomp（安全默认值）
+	enableUserNS := true
+	enableSeccomp := true
+
+	// 尝试从全局配置读取 bwrap 配置
+	if cfg, err := config.LoadDefaultIfExists(); err == nil && cfg != nil {
+		enableUserNS = cfg.BwrapEnableUserNS
+		enableSeccomp = cfg.BwrapEnableSeccomp
+	}
+
 	return &BwrapContainer{
 		name:          name,
 		logger:        logger,
@@ -80,6 +107,8 @@ func (f *BwrapFactory) Create(name string) (Container, error) {
 		status: ContainerStatus{
 			State: "created",
 		},
+		enableUserNS:  enableUserNS,
+		enableSeccomp: enableSeccomp,
 	}, nil
 }
 
@@ -369,6 +398,18 @@ func (c *BwrapContainer) buildArgs(spec ContainerSpec) ([]string, string) {
 	args = append(args, "--die-with-parent")
 	args = append(args, "--new-session")
 
+	// UserNS 配置
+	if !c.enableUserNS {
+		// 如果禁用 UserNS，添加 --unshare-user=no
+		args = append(args, "--unshare-user=no")
+		c.logger.Warn("UserNS disabled, container will run in host user namespace")
+	} else {
+		// 启用 UserNS，明确指定映射
+		args = append(args, "--unshare-user")
+		args = append(args, "--map-root-user")
+		c.logger.Debug("UserNS enabled with root mapping")
+	}
+
 	// OverlayFS 设置（使用策略接口）
 	if c.overlayStrat != nil {
 		overlayArgs := c.overlayStrat.BuildArgs(spec.Rootfs, spec.UpperDir, spec.WorkDir, "/")
@@ -427,25 +468,31 @@ func (c *BwrapContainer) buildArgs(spec ContainerSpec) ([]string, string) {
 	}
 
 	// Seccomp BPF（使用策略接口）
-	if len(spec.SeccompBPF) > 0 {
-		bpfFile = filepath.Join(os.TempDir(), fmt.Sprintf("seccomp-%d.bpf", os.Getpid()))
-		if err := writeSeccompBPF(bpfFile, spec.SeccompBPF); err == nil {
-			args = append(args, "--seccomp="+bpfFile)
-		} else {
-			// 写入失败，清空路径避免清理时误删
-			bpfFile = ""
-		}
-	} else if c.seccompStrat != nil {
-		// 使用策略生成默认 BPF
-		bpfData, err := c.seccompStrat.GenerateBPF()
-		if err == nil && len(bpfData) > 0 {
+	if c.enableSeccomp {
+		if len(spec.SeccompBPF) > 0 {
 			bpfFile = filepath.Join(os.TempDir(), fmt.Sprintf("seccomp-%d.bpf", os.Getpid()))
-			if err := os.WriteFile(bpfFile, bpfData, 0644); err == nil {
+			if err := writeSeccompBPF(bpfFile, spec.SeccompBPF); err == nil {
 				args = append(args, "--seccomp="+bpfFile)
 			} else {
+				// 写入失败，清空路径避免清理时误删
 				bpfFile = ""
+				c.logger.Warn("failed to write seccomp bpf file", log.Field{Key: "error", Value: err.Error()})
+			}
+		} else if c.seccompStrat != nil {
+			// 使用策略生成默认 BPF
+			bpfData, err := c.seccompStrat.GenerateBPF()
+			if err == nil && len(bpfData) > 0 {
+				bpfFile = filepath.Join(os.TempDir(), fmt.Sprintf("seccomp-%d.bpf", os.Getpid()))
+				if err := os.WriteFile(bpfFile, bpfData, 0644); err == nil {
+					args = append(args, "--seccomp="+bpfFile)
+				} else {
+					bpfFile = ""
+					c.logger.Warn("failed to write seccomp bpf file", log.Field{Key: "error", Value: err.Error()})
+				}
 			}
 		}
+	} else {
+		c.logger.Info("seccomp disabled by configuration")
 	}
 
 	// 默认 shell

@@ -40,8 +40,10 @@ func TestBwrapContainerBuildArgs(t *testing.T) {
 	require.NoError(t, os.MkdirAll(workspace, 0755))
 
 	c := &BwrapContainer{
-		name:   "test-container",
-		logger: &testLogger{},
+		name:           "test-container",
+		logger:         &testLogger{},
+		enableSeccomp:  true,
+		enableUserNS:   true,
 	}
 
 	spec := ContainerSpec{
@@ -108,8 +110,10 @@ func TestBwrapContainerBuildArgsWithCustomBPF(t *testing.T) {
 	require.NoError(t, os.MkdirAll(work, 0755))
 
 	c := &BwrapContainer{
-		name:   "test-container",
-		logger: &testLogger{},
+		name:           "test-container",
+		logger:         &testLogger{},
+		enableSeccomp:  true,
+		enableUserNS:   true,
 	}
 
 	// 自定义 BPF 数据
@@ -293,8 +297,10 @@ func TestBwrapArgsSeccompDisabled(t *testing.T) {
 func TestBwrapContainerStartRequiresBwrap(t *testing.T) {
 	// 这个测试验证启动逻辑，但由于内核限制，我们只测试 checkDependencies
 	c := &BwrapContainer{
-		name:   "test-container",
-		logger: &testLogger{},
+		name:           "test-container",
+		logger:         &testLogger{},
+		enableSeccomp:  true,
+		enableUserNS:   true,
 	}
 
 	// 在当前环境，可能因为内核或 bwrap 缺失而失败
@@ -311,8 +317,10 @@ func TestBwrapContainerStartRequiresBwrap(t *testing.T) {
 // TestBwrapContainerCheckKernelSupport 测试内核支持检查
 func TestBwrapContainerCheckKernelSupport(t *testing.T) {
 	c := &BwrapContainer{
-		name:   "test-container",
-		logger: &testLogger{},
+		name:           "test-container",
+		logger:         &testLogger{},
+		enableSeccomp:  true,
+		enableUserNS:   true,
 	}
 
 	supported := c.checkKernelSupport()
@@ -390,8 +398,10 @@ func TestWriteSeccompBPFInvalidPath(t *testing.T) {
 // TestBwrapContainerCloseNoRunner 测试 Close 方法（无 runner）
 func TestBwrapContainerCloseNoRunner(t *testing.T) {
 	c := &BwrapContainer{
-		name:   "test-container",
-		logger: &testLogger{},
+		name:           "test-container",
+		logger:         &testLogger{},
+		enableSeccomp:  true,
+		enableUserNS:   true,
 	}
 
 	// 未启动的容器 Close 应该成功
@@ -403,8 +413,10 @@ func TestBwrapContainerCloseNoRunner(t *testing.T) {
 // TestBwrapContainerStartCheckDependenciesError 测试启动时依赖检查失败
 func TestBwrapContainerStartCheckDependenciesError(t *testing.T) {
 	c := &BwrapContainer{
-		name:   "test-container",
-		logger: &testLogger{},
+		name:           "test-container",
+		logger:         &testLogger{},
+		enableSeccomp:  true,
+		enableUserNS:   true,
 	}
 
 	// 在当前环境，Start 会因为内核或 bwrap 缺失而失败

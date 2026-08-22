@@ -171,6 +171,24 @@ func Load(home string) (*Config, error) {
 	return cfg, nil
 }
 
+// LoadDefaultIfExists 尝试从默认位置加载配置
+func LoadDefaultIfExists() (*Config, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("get user home: %w", err)
+	}
+
+	defaultHome := filepath.Join(home, ".local", "share", "keeper")
+	configFile := filepath.Join(defaultHome, "config.json")
+
+	// 检查默认配置是否存在
+	if _, err := os.Stat(configFile); err != nil {
+		return nil, fmt.Errorf("default config not found: %w", err)
+	}
+
+	return Load(defaultHome)
+}
+
 // Save 保存配置到文件
 func (c *Config) Save() error {
 	c.mu.Lock()
