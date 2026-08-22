@@ -80,6 +80,56 @@ make test
 ./bin/keeper destroy my-agent
 ```
 
+## 配置
+
+Keeper 支持通过 `config.json` 进行运行时配置，配置文件位于 Keeper 数据目录（默认 `~/.local/share/keeper/config.json`）。首次运行会自动生成默认配置。
+
+### 配置项说明
+
+| 配置项 | 类型 | 默认值 | 说明 |
+|--------|------|--------|------|
+| `log_level` | string | `info` | 日志级别：debug/info/warn/error/fatal |
+| `max_download_bytes` | int64 | `1073741824` | 最大下载字节数（1GB） |
+| `default_shm_size_mb` | int | `64` | 默认共享内存大小（MB） |
+| `download_timeout` | string | `5m` | 下载超时时间（Go duration 格式） |
+| `watchdog_timeout` | string | `60s` | 看门狗超时时间 |
+| `watchdog_check_interval` | string | `5s` | 看门狗检查间隔 |
+| `mcp_allowed_uids` | []uint32 | `[]` | MCP Server 允许的 UID 白名单 |
+| `mcp_allowed_gids` | []uint32 | `[]` | MCP Server 允许的 GID 白名单 |
+| `seccomp_strategy` | string | `default` | Seccomp 策略：default/whitelist/blacklist/allow_all |
+| `overlay_strategy` | string | `default` | OverlayFS 策略：default/overlayfs |
+| `snapshot_compression_level` | int | `6` | 快照压缩级别（1-9） |
+| `network_forward_max_connections` | int | `0` | 每个端口转发的最大并发连接数（0=不限制） |
+| `network_forward_connect_timeout` | string | `5s` | 端口转发连接超时时间 |
+| `downloader_threads` | int | `4` | 下载器默认线程数 |
+| `downloader_chunk_size` | int64 | `1048576` | 下载器分块大小（字节） |
+| `downloader_retry_delay` | string | `100ms` | 下载器重试间隔 |
+| `storage_max_snapshots` | int | `0` | 每个 Agent 保留的最大快照数（0=不限制） |
+| `storage_prune_interval` | string | `1h` | 存储清理间隔 |
+| `bwrap_enable_userns` | bool | `true` | 是否启用 UserNS |
+| `bwrap_enable_seccomp` | bool | `true` | 是否启用 Seccomp |
+| `metrics_enabled` | bool | `true` | 是否启用 metrics server |
+| `metrics_listen_addr` | string | `:9090` | metrics server 监听地址 |
+
+### 热加载
+
+配置文件支持热加载：修改 `config.json` 后，Keeper 会在下次检查周期自动重载配置。部分配置（如 `watchdog_timeout`、`mcp_allowed_uids`）支持动态生效。
+
+### 示例配置
+
+```json
+{
+  "log_level": "info",
+  "default_shm_size_mb": 64,
+  "watchdog_timeout": "60s",
+  "network_forward_max_connections": 10,
+  "downloader_threads": 4,
+  "storage_max_snapshots": 10,
+  "metrics_enabled": true,
+  "metrics_listen_addr": ":9090"
+}
+```
+
 ## 项目结构
 
 ```

@@ -60,6 +60,39 @@ type Config struct {
 	// SnapshotCompressionLevel 快照压缩级别（1-9，1 最快，9 最佳压缩）
 	SnapshotCompressionLevel int `json:"snapshot_compression_level"`
 
+	// NetworkForwardMaxConnections 每个端口转发的最大并发连接数（0=不限制）
+	NetworkForwardMaxConnections int `json:"network_forward_max_connections"`
+
+	// NetworkForwardConnectTimeout 端口转发连接超时时间
+	NetworkForwardConnectTimeout string `json:"network_forward_connect_timeout"`
+
+	// DownloaderThreads 下载器默认线程数
+	DownloaderThreads int `json:"downloader_threads"`
+
+	// DownloaderChunkSize 下载器分块大小（字节）
+	DownloaderChunkSize int64 `json:"downloader_chunk_size"`
+
+	// DownloaderRetryDelay 下载器重试间隔
+	DownloaderRetryDelay string `json:"downloader_retry_delay"`
+
+	// StorageMaxSnapshots 每个 Agent 保留的最大快照数（0=不限制）
+	StorageMaxSnapshots int `json:"storage_max_snapshots"`
+
+	// StoragePruneInterval 存储清理间隔
+	StoragePruneInterval string `json:"storage_prune_interval"`
+
+	// BwrapEnableUserNS 是否启用 UserNS
+	BwrapEnableUserNS bool `json:"bwrap_enable_userns"`
+
+	// BwrapEnableSeccomp 是否启用 Seccomp
+	BwrapEnableSeccomp bool `json:"bwrap_enable_seccomp"`
+
+	// MetricsEnabled 是否启用 metrics server
+	MetricsEnabled bool `json:"metrics_enabled"`
+
+	// MetricsListenAddr metrics server 监听地址
+	MetricsListenAddr string `json:"metrics_listen_addr"`
+
 	// file 配置文件路径（不序列化）
 	file string
 
@@ -88,6 +121,17 @@ func DefaultConfig() *Config {
 		SeccompStrategy:          "default",
 		OverlayStrategy:          "default",
 		SnapshotCompressionLevel: 6, // 平衡速度和压缩率
+		NetworkForwardMaxConnections: 0, // 不限制
+		NetworkForwardConnectTimeout: "5s",
+		DownloaderThreads:           4,
+		DownloaderChunkSize:         1024 * 1024, // 1MB
+		DownloaderRetryDelay:        "100ms",
+		StorageMaxSnapshots:         0, // 不限制
+		StoragePruneInterval:        "1h",
+		BwrapEnableUserNS:           true,
+		BwrapEnableSeccomp:          true,
+		MetricsEnabled:              true,
+		MetricsListenAddr:           ":9090",
 	}
 }
 
@@ -211,6 +255,17 @@ func (c *Config) ReloadIfChanged() error {
 	c.SeccompStrategy = newCfg.SeccompStrategy
 	c.OverlayStrategy = newCfg.OverlayStrategy
 	c.SnapshotCompressionLevel = newCfg.SnapshotCompressionLevel
+	c.NetworkForwardMaxConnections = newCfg.NetworkForwardMaxConnections
+	c.NetworkForwardConnectTimeout = newCfg.NetworkForwardConnectTimeout
+	c.DownloaderThreads = newCfg.DownloaderThreads
+	c.DownloaderChunkSize = newCfg.DownloaderChunkSize
+	c.DownloaderRetryDelay = newCfg.DownloaderRetryDelay
+	c.StorageMaxSnapshots = newCfg.StorageMaxSnapshots
+	c.StoragePruneInterval = newCfg.StoragePruneInterval
+	c.BwrapEnableUserNS = newCfg.BwrapEnableUserNS
+	c.BwrapEnableSeccomp = newCfg.BwrapEnableSeccomp
+	c.MetricsEnabled = newCfg.MetricsEnabled
+	c.MetricsListenAddr = newCfg.MetricsListenAddr
 	c.modTime = info.ModTime()
 
 	// 触发回调
@@ -276,6 +331,32 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("snapshot_compression_level must be between 1 and 9")
 	}
 
+	if c.DownloaderThreads < 1 {
+		return fmt.Errorf("downloader_threads must be at least 1")
+	}
+
+	if c.DownloaderChunkSize < 1024 {
+		return fmt.Errorf("downloader_chunk_size must be at least 1024 bytes")
+	}
+
+	validSeccomp := map[string]bool{
+		"default":    true,
+		"whitelist":  true,
+		"blacklist":  true,
+		"allow_all":  true,
+	}
+	if !validSeccomp[c.SeccompStrategy] {
+		return fmt.Errorf("invalid seccomp_strategy: %s", c.SeccompStrategy)
+	}
+
+	validOverlay := map[string]bool{
+		"default":    true,
+		"overlayfs":  true,
+	}
+	if !validOverlay[c.OverlayStrategy] {
+		return fmt.Errorf("invalid overlay_strategy: %s", c.OverlayStrategy)
+	}
+
 	return nil
 }
 
@@ -292,4 +373,19 @@ func (c *Config) WatchdogCheckIntervalDuration() (time.Duration, error) {
 // DownloadTimeoutDuration 返回下载超时时间
 func (c *Config) DownloadTimeoutDuration() (time.Duration, error) {
 	return time.ParseDuration(c.DownloadTimeout)
+}
+
+// NetworkForwardConnectTimeoutDuration 返回端口转发连接超时时间
+func (c *Config) NetworkForwardConnectTimeoutDuration() (time.Duration, error) {
+	return time.ParseDuration(c.NetworkForwardConnectTimeout)
+}
+
+// DownloaderRetryDelayDuration 返回下载器重试间隔
+func (c *Config) DownloaderRetryDelayDuration() (time.Duration, error) {
+	return time.ParseDuration(c.DownloaderRetryDelay)
+}
+
+// StoragePruneIntervalDuration 返回存储清理间隔
+func (c *Config) StoragePruneIntervalDuration() (time.Duration, error) {
+	return time.ParseDuration(c.StoragePruneInterval)
 }
