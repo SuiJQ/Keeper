@@ -153,6 +153,13 @@ func (s *Server) Stop() error {
 	return nil
 }
 
+// IsRunning 检查 MCP Server 是否运行中
+func (s *Server) IsRunning() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.running
+}
+
 // acceptLoop 接受连接循环
 func (s *Server) acceptLoop(ctx context.Context) {
 	for {

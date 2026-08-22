@@ -101,6 +101,13 @@ func (w *Watchdog) Stop() {
 	RecordWatchdogStop("success")
 }
 
+// IsRunning 检查看门狗是否运行中
+func (w *Watchdog) IsRunning() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.running
+}
+
 // RegisterAgent 注册 agent 到看门狗
 func (w *Watchdog) RegisterAgent(name string, pid int) {
 	w.mu.Lock()

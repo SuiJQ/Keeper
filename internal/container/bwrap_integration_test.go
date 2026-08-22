@@ -711,5 +711,6 @@ func (l *testLogger) Warn(msg string, fields ...log.Field)      {}
 func (l *testLogger) Error(msg string, fields ...log.Field)     {}
 func (l *testLogger) Fatal(msg string, fields ...log.Field)     {}
 func (l *testLogger) WithFields(fields ...log.Field) log.Logger { return l }
+func (l *testLogger) WithTrace(traceID, spanID string) log.Logger { return l }
 func (l *testLogger) Sync() error                               { return nil }
 func (l *testLogger) SetOutput(w io.Writer)                     {}

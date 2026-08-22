@@ -458,15 +458,35 @@ func runAgentCommand(cfg *config.Config, args []string) error {
 	defer wd.Stop()
 
 	// 启动指标服务器
-	metricsServer := metrics.NewHTTPServer(":9090")
-	if err := metricsServer.Start(); err != nil {
-		return fmt.Errorf("start metrics server: %w", err)
+	metricsListenAddr := cfg.MetricsListenAddr
+	if !cfg.MetricsEnabled {
+		metricsListenAddr = "" // 禁用
 	}
-	defer func() {
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = metricsServer.Stop(shutdownCtx)
-	}()
+	if metricsListenAddr != "" {
+		metricsServer := metrics.NewHTTPServer(metricsListenAddr)
+		metricsServer.SetHealthCheck(func() error {
+			// 检查 MCP Server 是否运行
+			if !mcpServer.IsRunning() {
+				return fmt.Errorf("mcp server not running")
+			}
+			return nil
+		})
+		metricsServer.SetReadyCheck(func() error {
+			// 检查看门狗是否运行
+			if !wd.IsRunning() {
+				return fmt.Errorf("watchdog not running")
+			}
+			return nil
+		})
+		if err := metricsServer.Start(); err != nil {
+			return fmt.Errorf("start metrics server: %w", err)
+		}
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = metricsServer.Stop(shutdownCtx)
+		}()
+	}
 
 	// 记录 agent 启动指标
 	agentStartCounter := metrics.RegisterCounter("keeper_agent_starts_total", "Total number of agent starts", []string{"agent_name", "state"})

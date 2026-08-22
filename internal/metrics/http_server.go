@@ -14,6 +14,10 @@ type HTTPServer struct {
 	server  *http.Server
 	mu      sync.RWMutex
 	running bool
+
+	// healthCheck 健康检查函数
+	healthCheck func() error
+	readyCheck  func() error
 }
 
 // NewHTTPServer 创建指标 HTTP 服务器
@@ -49,6 +53,28 @@ func (s *HTTPServer) Start() error {
 	mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 		fmt.Fprint(w, PrometheusFormat())
+	})
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if s.healthCheck != nil {
+			if err := s.healthCheck(); err != nil {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				fmt.Fprintf(w, `{"status":"unhealthy","error":"%s"}`, err.Error())
+				return
+			}
+		}
+		fmt.Fprint(w, `{"status":"healthy"}`)
+	})
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if s.readyCheck != nil {
+			if err := s.readyCheck(); err != nil {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				fmt.Fprintf(w, `{"status":"not ready","error":"%s"}`, err.Error())
+				return
+			}
+		}
+		fmt.Fprint(w, `{"status":"ready"}`)
 	})
 
 	s.server = &http.Server{
@@ -86,6 +112,20 @@ func (s *HTTPServer) IsRunning() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.running
+}
+
+// SetHealthCheck 设置健康检查函数
+func (s *HTTPServer) SetHealthCheck(check func() error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.healthCheck = check
+}
+
+// SetReadyCheck 设置就绪检查函数
+func (s *HTTPServer) SetReadyCheck(check func() error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.readyCheck = check
 }
 
 // 全局 HTTP 服务器

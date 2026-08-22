@@ -2,10 +2,13 @@
 package log
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
+	"sync"
 	"time"
 )
 
@@ -38,6 +41,9 @@ type Logger interface {
 	// 子日志器（带上下文）
 	WithFields(fields ...Field) Logger
 
+	// Trace 子日志器（带 trace 上下文）
+	WithTrace(traceID, spanID string) Logger
+
 	// 同步刷盘
 	Sync() error
 
@@ -56,6 +62,8 @@ const (
 	FieldCommand   = "command"
 	FieldStage     = "stage"
 	FieldTimestamp = "timestamp"
+	FieldTraceID   = "trace_id"
+	FieldSpanID    = "span_id"
 )
 
 // entry 日志条目
@@ -68,8 +76,10 @@ type entry struct {
 
 // logger 日志实现
 type logger struct {
-	output io.Writer
-	fields map[string]string
+	output   io.Writer
+	fields   map[string]string
+	traceID  string
+	spanID   string
 }
 
 // New 创建新的 Logger 实例
@@ -96,8 +106,32 @@ func (l *logger) WithFields(fields ...Field) Logger {
 	}
 
 	return &logger{
-		output: l.output,
-		fields: newFields,
+		output:  l.output,
+		fields:  newFields,
+		traceID: l.traceID,
+		spanID:  l.spanID,
+	}
+}
+
+// WithTrace 创建带 trace 上下文的子日志器
+func (l *logger) WithTrace(traceID, spanID string) Logger {
+	newFields := make(map[string]string, len(l.fields))
+	for k, v := range l.fields {
+		newFields[k] = v
+	}
+
+	if traceID != "" {
+		newFields[FieldTraceID] = traceID
+	}
+	if spanID != "" {
+		newFields[FieldSpanID] = spanID
+	}
+
+	return &logger{
+		output:  l.output,
+		fields:  newFields,
+		traceID: traceID,
+		spanID:  spanID,
 	}
 }
 
@@ -180,4 +214,48 @@ func SetGlobal(logger Logger) {
 // Global 获取全局日志器
 func Global() Logger {
 	return defaultLogger
+}
+
+// GenerateTraceID 生成新的 trace ID（16 字节随机 hex）
+func GenerateTraceID() string {
+	buf := make([]byte, 16)
+	_, _ = rand.Read(buf)
+	return hex.EncodeToString(buf)
+}
+
+// GenerateSpanID 生成新的 span ID（8 字节随机 hex）
+func GenerateSpanID() string {
+	buf := make([]byte, 8)
+	_, _ = rand.Read(buf)
+	return hex.EncodeToString(buf)
+}
+
+// TraceID 全局 trace ID 生成器（带缓存）
+var traceIDGenerator = &traceIDGen{
+	mu:    &sync.Mutex{},
+	state: make([]byte, 16),
+}
+
+type traceIDGen struct {
+	mu    *sync.Mutex
+	state []byte
+}
+
+func (g *traceIDGen) Next() string {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	_, _ = rand.Read(g.state)
+	return hex.EncodeToString(g.state)
+}
+
+// NextTraceID 生成全局唯一 trace ID
+func NextTraceID() string {
+	return traceIDGenerator.Next()
+}
+
+// NextSpanID 生成全局唯一 span ID
+func NextSpanID() string {
+	buf := make([]byte, 8)
+	_, _ = rand.Read(buf)
+	return hex.EncodeToString(buf)
 }
