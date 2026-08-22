@@ -791,3 +791,139 @@ func TestBwrapContainerStartNotCreated(t *testing.T) {
 			"error should mention bwrap or kernel: %s", msg)
 	}
 }
+
+// TestMockContainerLifecycle 测试 mock 容器完整生命周期
+func TestMockContainerLifecycle(t *testing.T) {
+	factory := NewMockFactory(nil)
+	assert.NotNil(t, factory)
+
+	ctx := context.Background()
+	spec := ContainerSpec{
+		Name:    "mock-test",
+		Rootfs:  "/tmp/rootfs",
+		ShmSize: 64,
+		Envvars: []string{"TEST=1", "MODE=test"},
+	}
+
+	// 1. 创建容器
+	container, err := factory.Create("mock-test")
+	assert.NoError(t, err)
+	assert.NotNil(t, container)
+
+	// 2. 启动容器
+	pid, err := container.Start(ctx, spec)
+	assert.NoError(t, err)
+	assert.Equal(t, 12345, int(pid))
+
+	// 验证容器已启动
+	mockContainer, ok := container.(*MockContainer)
+	require.True(t, ok)
+	assert.True(t, mockContainer.IsStarted())
+	assert.False(t, mockContainer.IsStopped())
+
+	// 3. 查询状态
+	status, err := container.Status(ctx)
+	assert.NoError(t, err)
+	assert.Equal(t, "running", status.State)
+	assert.Equal(t, 12345, status.PID)
+
+	// 4. 执行命令
+	execResp, err := container.Exec(ctx, ExecRequest{
+		Command: "echo hello",
+		Env:     []string{"FOO=bar"},
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, 0, execResp.ExitCode)
+	assert.Equal(t, []byte("mock output\n"), execResp.Stdout)
+	assert.Equal(t, 1, mockContainer.ExecCount())
+
+	// 5. 停止容器
+	err = container.Stop(ctx, 5*time.Second)
+	assert.NoError(t, err)
+	assert.True(t, mockContainer.IsStopped())
+
+	// 6. 再次查询状态
+	status, err = container.Status(ctx)
+	assert.NoError(t, err)
+	assert.Equal(t, "stopped", status.State)
+
+	// 7. 关闭容器
+	err = container.Close()
+	assert.NoError(t, err)
+
+	// 验证创建的容器名称
+	created := factory.CreatedNames()
+	assert.Equal(t, []string{"mock-test"}, created)
+}
+
+// TestMockContainerDoubleStart 测试重复启动
+func TestMockContainerDoubleStart(t *testing.T) {
+	factory := NewMockFactory(nil)
+	ctx := context.Background()
+	spec := ContainerSpec{Name: "double-start"}
+
+	container, err := factory.Create("double-start")
+	assert.NoError(t, err)
+
+	// 第一次启动
+	_, err = container.Start(ctx, spec)
+	assert.NoError(t, err)
+
+	// 第二次启动应该失败
+	_, err = container.Start(ctx, spec)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "already started")
+}
+
+// TestMockContainerStopNotStarted 测试停止未启动的容器
+func TestMockContainerStopNotStarted(t *testing.T) {
+	factory := NewMockFactory(nil)
+	ctx := context.Background()
+
+	container, err := factory.Create("not-started")
+	assert.NoError(t, err)
+
+	// 停止未启动的容器应该返回 nil（幂等）
+	err = container.Stop(ctx, 5*time.Second)
+	assert.NoError(t, err)
+}
+
+// TestMockContainerExecHistory 测试命令历史
+func TestMockContainerExecHistory(t *testing.T) {
+	factory := NewMockFactory(nil)
+	ctx := context.Background()
+	spec := ContainerSpec{Name: "exec-history"}
+
+	container, err := factory.Create("exec-history")
+	assert.NoError(t, err)
+
+	_, err = container.Start(ctx, spec)
+	assert.NoError(t, err)
+
+	mockContainer := container.(*MockContainer)
+
+	// 执行多个命令
+	commands := []string{
+		"echo hello",
+		"ls -la",
+		"pwd",
+	}
+
+	for _, cmd := range commands {
+		_, err = container.Exec(ctx, ExecRequest{Command: cmd})
+		assert.NoError(t, err)
+	}
+
+	// 验证执行次数
+	assert.Equal(t, 3, mockContainer.ExecCount())
+
+	// 验证最后一个命令
+	lastExec, ok := mockContainer.LastExec()
+	assert.True(t, ok)
+	assert.Equal(t, "pwd", lastExec.Command)
+
+	// 测试空历史
+	emptyContainer, _ := factory.Create("empty")
+	_, ok = emptyContainer.(*MockContainer).LastExec()
+	assert.False(t, ok)
+}
