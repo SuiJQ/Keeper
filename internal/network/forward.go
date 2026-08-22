@@ -23,6 +23,8 @@ type Forwarder struct {
 	portForwards []*PortForward
 	listeners    []net.Listener
 	logger       log.Logger
+	// activeConnections 记录每个端口的活跃连接数
+	activeConnections map[int]int
 }
 
 // NewForwarder 创建端口转发器
@@ -31,9 +33,10 @@ func NewForwarder(logger log.Logger) *Forwarder {
 		logger = log.Global()
 	}
 	return &Forwarder{
-		portForwards: make([]*PortForward, 0),
-		listeners:    make([]net.Listener, 0),
-		logger:       logger,
+		portForwards:      make([]*PortForward, 0),
+		listeners:         make([]net.Listener, 0),
+		logger:            logger,
+		activeConnections: make(map[int]int),
 	}
 }
 
@@ -107,6 +110,24 @@ func (f *Forwarder) acceptLoop(listener net.Listener, pf *PortForward) {
 			return
 		}
 
+		// 检查连接数限制
+		if pf.MaxConnections > 0 {
+			f.mu.Lock()
+			current := f.activeConnections[pf.Host]
+			if current >= pf.MaxConnections {
+				f.mu.Unlock()
+				conn.Close()
+				f.logger.Warn("max connections reached, rejecting new connection",
+					log.Field{Key: "host", Value: pf.Host},
+					log.Field{Key: "max", Value: pf.MaxConnections},
+					log.Field{Key: "current", Value: current})
+				RecordProxyConnection("rejected")
+				continue
+			}
+			f.activeConnections[pf.Host]++
+			f.mu.Unlock()
+		}
+
 		go f.handleConnection(conn, pf)
 	}
 }
@@ -115,12 +136,29 @@ func (f *Forwarder) acceptLoop(listener net.Listener, pf *PortForward) {
 func (f *Forwarder) handleConnection(clientConn net.Conn, pf *PortForward) {
 	startTime := time.Now()
 	RecordProxyConnection("attempt")
-
-	defer clientConn.Close()
+	defer func() {
+		clientConn.Close()
+		// 减少活跃连接计数
+		if pf.MaxConnections > 0 {
+			f.mu.Lock()
+			f.activeConnections[pf.Host]--
+			if f.activeConnections[pf.Host] < 0 {
+				f.activeConnections[pf.Host] = 0
+			}
+			f.mu.Unlock()
+		}
+	}()
 
 	// 连接到容器端口
 	containerAddr := fmt.Sprintf("127.0.0.1:%d", pf.Container)
-	containerConn, err := net.DialTimeout("tcp", containerAddr, 5*time.Second)
+	
+	// 设置连接超时
+	connectTimeout := pf.ConnectTimeout
+	if connectTimeout <= 0 {
+		connectTimeout = 5 * time.Second
+	}
+	
+	containerConn, err := net.DialTimeout("tcp", containerAddr, connectTimeout)
 	if err != nil {
 		f.logger.Warn("connect to container failed",
 			log.Field{Key: "container", Value: containerAddr},
@@ -184,4 +222,5 @@ func (f *Forwarder) Stop() {
 	}
 	f.listeners = nil
 	f.portForwards = nil
+	f.activeConnections = make(map[int]int)
 }

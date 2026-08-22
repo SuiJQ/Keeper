@@ -3,6 +3,7 @@ package network
 import (
 	"fmt"
 	"net"
+	"time"
 )
 
 // PortForward 端口转发配置
@@ -10,6 +11,10 @@ type PortForward struct {
 	Host      int
 	Container int
 	Protocol  string // tcp / udp
+	// MaxConnections 最大并发连接数，0 表示不限制
+	MaxConnections int
+	// ConnectTimeout 连接超时时间
+	ConnectTimeout time.Duration
 }
 
 // String 返回端口转发的字符串表示
