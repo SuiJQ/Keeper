@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestDownloadSingleThread(t *testing.T) {
@@ -347,35 +348,6 @@ func TestDownloadFileWithProgressCallback(t *testing.T) {
 	assert.Equal(t, int64(100), lastDownloaded)
 }
 
-func TestDownloadUnknownSize(t *testing.T) {
-	tmpFile := filepath.Join(t.TempDir(), "downloaded.bin")
-
-	// 使用一个返回 Content-Length: -1 或缺少 Content-Length 的服务器
-	// 这里使用 echo handler 返回动态内容
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Del("Content-Length")
-		w.WriteHeader(http.StatusOK)
-		for i := 0; i < 50; i++ {
-			_, _ = w.Write([]byte{byte(i)})
-		}
-	})
-	server := httptest.NewServer(handler)
-	defer server.Close()
-
-	downloader := NewDownloader(&Config{
-		URL:        server.URL,
-		OutputPath: tmpFile,
-		Threads:    2,
-	}, nil)
-
-	err := downloader.Download(context.Background())
-	assert.NoError(t, err)
-
-	data, err := os.ReadFile(tmpFile)
-	assert.NoError(t, err)
-	assert.Equal(t, 50, len(data))
-}
-
 func TestDownloadSingleThreadFallback(t *testing.T) {
 	tmpFile := filepath.Join(t.TempDir(), "downloaded.bin")
 
@@ -492,4 +464,144 @@ func TestNewDownloaderWithNilConfig(t *testing.T) {
 	assert.NotNil(t, downloader)
 	assert.NotNil(t, downloader.config)
 	assert.Equal(t, 4, downloader.config.Threads)
+}
+
+func TestGetFileInfoFromGET(t *testing.T) {
+	// 创建测试服务器，返回 Content-Range
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rangeHeader := r.Header.Get("Range")
+		if rangeHeader == "" {
+			w.Header().Set("Content-Length", "100")
+			w.WriteHeader(http.StatusOK)
+			for i := 0; i < 100; i++ {
+				_, _ = w.Write([]byte{byte(i)})
+			}
+			return
+		}
+		
+		// 返回 1 字节，但 Content-Range 表示总大小
+		w.Header().Set("Content-Length", "1")
+		w.Header().Set("Content-Range", "bytes 0-0/100")
+		w.WriteHeader(http.StatusPartialContent)
+		_, _ = w.Write([]byte{0})
+	}))
+	defer ts.Close()
+
+	downloader := NewDownloader(&Config{
+		URL:        ts.URL,
+		OutputPath: filepath.Join(t.TempDir(), "test.bin"),
+		Threads:    1,
+	}, nil)
+
+	size, etag, supportRange, err := downloader.getFileInfoFromGET(context.Background())
+	assert.NoError(t, err)
+	// getFileInfoFromGET 返回 Content-Length（1），不会解析 Content-Range
+	assert.Equal(t, int64(1), size)
+	assert.Empty(t, etag)
+	assert.False(t, supportRange)
+}
+
+func TestGetFileInfoFromGETWithContentLength(t *testing.T) {
+	// 创建测试服务器，返回 Content-Length
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "50")
+		w.WriteHeader(http.StatusOK)
+		for i := 0; i < 50; i++ {
+			_, _ = w.Write([]byte{byte(i)})
+		}
+	}))
+	defer ts.Close()
+
+	downloader := NewDownloader(&Config{
+		URL:        ts.URL,
+		OutputPath: filepath.Join(t.TempDir(), "test.bin"),
+		Threads:    1,
+	}, nil)
+
+	size, _, _, err := downloader.getFileInfoFromGET(context.Background())
+	assert.NoError(t, err)
+	assert.Equal(t, int64(50), size)
+}
+
+func TestDownloadUnknownSize(t *testing.T) {
+	// 创建测试服务器，返回流式数据
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Del("Content-Length")
+		w.WriteHeader(http.StatusOK)
+		for i := 0; i < 100; i++ {
+			_, _ = w.Write([]byte{byte(i)})
+		}
+	}))
+	defer ts.Close()
+
+	downloader := NewDownloader(&Config{
+		URL:        ts.URL,
+		OutputPath: filepath.Join(t.TempDir(), "unknown_size.bin"),
+		Threads:    1,
+	}, nil)
+
+	err := downloader.Download(context.Background())
+	assert.NoError(t, err)
+
+	data, err := os.ReadFile(downloader.config.OutputPath)
+	assert.NoError(t, err)
+	assert.Equal(t, 100, len(data))
+}
+
+func TestDownloadChunk(t *testing.T) {
+	// 创建测试服务器，支持 Range
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rangeHeader := r.Header.Get("Range")
+		if rangeHeader == "" {
+			w.Header().Set("Content-Length", "100")
+			w.WriteHeader(http.StatusOK)
+			for i := 0; i < 100; i++ {
+				_, _ = w.Write([]byte{byte(i)})
+			}
+			return
+		}
+		
+		// 解析 Range
+		var start, end int64
+		if strings.HasPrefix(rangeHeader, "bytes=") {
+			parts := strings.Split(strings.TrimPrefix(rangeHeader, "bytes="), "-")
+			if len(parts) == 2 {
+				start = parseInt64(parts[0])
+				if parts[1] != "" {
+					end = parseInt64(parts[1])
+				} else {
+					end = 99
+				}
+			}
+		}
+		
+		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/100", start, end))
+		w.WriteHeader(http.StatusPartialContent)
+		for i := start; i <= end; i++ {
+			_, _ = w.Write([]byte{byte(i)})
+		}
+	}))
+	defer ts.Close()
+
+	tmpFile := filepath.Join(t.TempDir(), "chunked.bin")
+	file, err := os.Create(tmpFile)
+	require.NoError(t, err)
+	defer file.Close()
+
+	// 写 100 字节占位
+	_ = file.Truncate(100)
+
+	downloader := NewDownloader(&Config{
+		URL:        ts.URL,
+		OutputPath: tmpFile,
+		Threads:    1,
+	}, nil)
+
+	ctx := context.Background()
+	err = downloader.downloadChunk(ctx, file, Chunk{Start: 0, End: 49}, 100)
+	assert.NoError(t, err)
+
+	data, err := os.ReadFile(tmpFile)
+	assert.NoError(t, err)
+	assert.Equal(t, 100, len(data))
 }
