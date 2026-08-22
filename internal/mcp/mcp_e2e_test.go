@@ -17,6 +17,14 @@ import (
 	"keeper/internal/storage"
 )
 
+func safeUint32(v int) uint32 {
+	if v < 0 {
+		return 0
+	}
+	// #nosec G115 - v is validated to be non-negative above
+	return uint32(v)
+}
+
 // TestMCPEndToEndFullFlow 测试 MCP Server 端到端完整流程
 func TestMCPEndToEndFullFlow(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "keeper-mcp-e2e-*")
@@ -32,8 +40,8 @@ func TestMCPEndToEndFullFlow(t *testing.T) {
 		SocketPath:  filepath.Join(tmpDir, "mcp.sock"),
 		AgentName:   "test-agent",
 		Store:       store,
-		AllowedUIDs: []uint32{0, uint32(os.Getuid())},
-		AllowedGIDs: []uint32{0, uint32(os.Getgid())},
+		AllowedUIDs: []uint32{0, safeUint32(os.Getuid())},
+		AllowedGIDs: []uint32{0, safeUint32(os.Getgid())},
 	}
 
 	server, err := NewServer(cfg, log.New(os.Stderr))
@@ -175,8 +183,8 @@ func TestMCPEndToEndShutdown(t *testing.T) {
 		SocketPath:  filepath.Join(tmpDir, "mcp.sock"),
 		AgentName:   "test-agent",
 		Store:       store,
-		AllowedUIDs: []uint32{0, uint32(os.Getuid())},
-		AllowedGIDs: []uint32{0, uint32(os.Getgid())},
+		AllowedUIDs: []uint32{0, safeUint32(os.Getuid())},
+		AllowedGIDs: []uint32{0, safeUint32(os.Getgid())},
 	}
 
 	server, err := NewServer(cfg, log.New(os.Stderr))
@@ -249,8 +257,8 @@ func TestMCPEndToEndInvalidMethod(t *testing.T) {
 		SocketPath:  filepath.Join(tmpDir, "mcp.sock"),
 		AgentName:   "test-agent",
 		Store:       store,
-		AllowedUIDs: []uint32{0, uint32(os.Getuid())},
-		AllowedGIDs: []uint32{0, uint32(os.Getgid())},
+		AllowedUIDs: []uint32{0, safeUint32(os.Getuid())},
+		AllowedGIDs: []uint32{0, safeUint32(os.Getgid())},
 	}
 
 	server, err := NewServer(cfg, log.New(os.Stderr))
@@ -317,8 +325,8 @@ func TestMCPEndToEndToolExecution(t *testing.T) {
 		SocketPath:  filepath.Join(tmpDir, "mcp.sock"),
 		AgentName:   "test-agent",
 		Store:       store,
-		AllowedUIDs: []uint32{0, uint32(os.Getuid())},
-		AllowedGIDs: []uint32{0, uint32(os.Getgid())},
+		AllowedUIDs: []uint32{0, safeUint32(os.Getuid())},
+		AllowedGIDs: []uint32{0, safeUint32(os.Getgid())},
 	}
 
 	server, err := NewServer(cfg, log.New(os.Stderr))
@@ -428,8 +436,8 @@ func TestMCPEndToEndToolExecutionWithRecursive(t *testing.T) {
 		SocketPath:  filepath.Join(tmpDir, "mcp.sock"),
 		AgentName:   "cp-test-agent",
 		Store:       store,
-		AllowedUIDs: []uint32{0, uint32(os.Getuid())},
-		AllowedGIDs: []uint32{0, uint32(os.Getgid())},
+		AllowedUIDs: []uint32{0, safeUint32(os.Getuid())},
+		AllowedGIDs: []uint32{0, safeUint32(os.Getgid())},
 	}
 
 	server, err := NewServer(cfg, log.New(os.Stderr))

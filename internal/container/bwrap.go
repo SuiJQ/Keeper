@@ -483,7 +483,7 @@ func (c *BwrapContainer) buildArgs(spec ContainerSpec) ([]string, string) {
 			bpfData, err := c.seccompStrat.GenerateBPF()
 			if err == nil && len(bpfData) > 0 {
 				bpfFile = filepath.Join(os.TempDir(), fmt.Sprintf("seccomp-%d.bpf", os.Getpid()))
-				if err := os.WriteFile(bpfFile, bpfData, 0644); err == nil {
+				if err := os.WriteFile(bpfFile, bpfData, 0600); err == nil {
 					args = append(args, "--seccomp="+bpfFile)
 				} else {
 					bpfFile = ""
@@ -575,7 +575,7 @@ func readSystemBootTime() (int64, error) {
 func writeSeccompBPF(filename string, bpf []byte) error {
 	// 如果传入的是预生成的 BPF 数据，直接写入
 	if len(bpf) > 0 {
-		return os.WriteFile(filename, bpf, 0644)
+		return os.WriteFile(filename, bpf, 0600)
 	}
 
 	// 否则使用默认过滤器生成 BPF 程序
@@ -585,5 +585,5 @@ func writeSeccompBPF(filename string, bpf []byte) error {
 		return fmt.Errorf("generate seccomp bpf: %w", err)
 	}
 
-	return os.WriteFile(filename, generatedBPF, 0644)
+	return os.WriteFile(filename, generatedBPF, 0600)
 }

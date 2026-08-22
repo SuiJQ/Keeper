@@ -117,7 +117,7 @@ func TestForkAgent(t *testing.T) {
 
 	// 写入一些文件到 upper 目录
 	upperFile := filepath.Join(tmpDir, "agents", "source", "upper", "test.txt")
-	err = os.WriteFile(upperFile, []byte("hello"), 0644)
+	err = os.WriteFile(upperFile, []byte("hello"), 0600)
 	require.NoError(t, err)
 
 	// Fork
@@ -200,7 +200,7 @@ func TestCreateSnapshot(t *testing.T) {
 
 	// 写入一些文件
 	upperFile := filepath.Join(tmpDir, "agents", "test-agent", "upper", "data.txt")
-	err = os.WriteFile(upperFile, []byte("snapshot data"), 0644)
+	err = os.WriteFile(upperFile, []byte("snapshot data"), 0600)
 	require.NoError(t, err)
 
 	// 创建快照
@@ -223,7 +223,7 @@ func TestRollbackSnapshot(t *testing.T) {
 
 	// 写入初始文件
 	upperFile := filepath.Join(tmpDir, "agents", "test-agent", "upper", "data.txt")
-	err = os.WriteFile(upperFile, []byte("original"), 0644)
+	err = os.WriteFile(upperFile, []byte("original"), 0600)
 	require.NoError(t, err)
 
 	// 创建快照
@@ -231,7 +231,7 @@ func TestRollbackSnapshot(t *testing.T) {
 	require.NoError(t, err)
 
 	// 修改文件
-	err = os.WriteFile(upperFile, []byte("modified"), 0644)
+	err = os.WriteFile(upperFile, []byte("modified"), 0600)
 	require.NoError(t, err)
 
 	// 回滚
@@ -256,7 +256,7 @@ func TestCreateSnapshotIncremental(t *testing.T) {
 
 	// 写入初始文件
 	upperFile := filepath.Join(tmpDir, "agents", "test-agent", "upper", "data.txt")
-	err = os.WriteFile(upperFile, []byte("original"), 0644)
+	err = os.WriteFile(upperFile, []byte("original"), 0600)
 	require.NoError(t, err)
 
 	// 创建第一个快照（完整快照，非增量）
@@ -264,7 +264,7 @@ func TestCreateSnapshotIncremental(t *testing.T) {
 	require.NoError(t, err)
 
 	// 修改文件
-	err = os.WriteFile(upperFile, []byte("modified"), 0644)
+	err = os.WriteFile(upperFile, []byte("modified"), 0600)
 	require.NoError(t, err)
 
 	// 创建第二个快照（增量快照，有父快照）
@@ -433,7 +433,7 @@ func TestListSnapshots(t *testing.T) {
 
 	// 写入一些文件
 	upperFile := filepath.Join(tmpDir, "agents", "test-agent", "upper", "data.txt")
-	err = os.WriteFile(upperFile, []byte("snapshot data"), 0644)
+	err = os.WriteFile(upperFile, []byte("snapshot data"), 0600)
 	require.NoError(t, err)
 
 	// 创建多个快照
@@ -485,7 +485,7 @@ func TestRollbackSnapshotMultiple(t *testing.T) {
 
 	// 写入初始文件
 	upperFile := filepath.Join(tmpDir, "agents", "test-agent", "upper", "data.txt")
-	err = os.WriteFile(upperFile, []byte("v1"), 0644)
+	err = os.WriteFile(upperFile, []byte("v1"), 0600)
 	require.NoError(t, err)
 
 	// 创建快照1
@@ -493,7 +493,7 @@ func TestRollbackSnapshotMultiple(t *testing.T) {
 	require.NoError(t, err)
 
 	// 修改文件
-	err = os.WriteFile(upperFile, []byte("v2"), 0644)
+	err = os.WriteFile(upperFile, []byte("v2"), 0600)
 	require.NoError(t, err)
 
 	// 创建快照2
@@ -501,7 +501,7 @@ func TestRollbackSnapshotMultiple(t *testing.T) {
 	require.NoError(t, err)
 
 	// 再次修改文件
-	err = os.WriteFile(upperFile, []byte("v3"), 0644)
+	err = os.WriteFile(upperFile, []byte("v3"), 0600)
 	require.NoError(t, err)
 
 	// 回滚到快照2
@@ -532,12 +532,12 @@ func TestCreateSnapshotWithWorkspace(t *testing.T) {
 	upperFile := filepath.Join(tmpDir, "agents", "test-agent", "upper", "data.txt")
 	workspaceFile := filepath.Join(tmpDir, "agents", "test-agent", "workspace", "work.txt")
 
-	err = os.WriteFile(upperFile, []byte("upper data"), 0644)
+	err = os.WriteFile(upperFile, []byte("upper data"), 0600)
 	require.NoError(t, err)
 
 	err = os.MkdirAll(filepath.Dir(workspaceFile), 0755)
 	require.NoError(t, err)
-	err = os.WriteFile(workspaceFile, []byte("workspace data"), 0644)
+	err = os.WriteFile(workspaceFile, []byte("workspace data"), 0600)
 	require.NoError(t, err)
 
 	// 创建快照
@@ -562,7 +562,7 @@ func TestForkAgentWithSnapshots(t *testing.T) {
 
 	// 写入文件
 	upperFile := filepath.Join(tmpDir, "agents", "source", "upper", "data.txt")
-	err = os.WriteFile(upperFile, []byte("source data"), 0644)
+	err = os.WriteFile(upperFile, []byte("source data"), 0600)
 	require.NoError(t, err)
 
 	// 创建快照
@@ -593,7 +593,7 @@ func TestCopyPhysical(t *testing.T) {
 
 	// 创建测试文件和子目录
 	srcFile := filepath.Join(srcDir, "test.txt")
-	err := os.WriteFile(srcFile, []byte("hello world"), 0644)
+	err := os.WriteFile(srcFile, []byte("hello world"), 0600)
 	require.NoError(t, err)
 
 	srcSubdir := filepath.Join(srcDir, "subdir")
@@ -601,7 +601,7 @@ func TestCopyPhysical(t *testing.T) {
 	require.NoError(t, err)
 
 	srcSubFile := filepath.Join(srcSubdir, "nested.txt")
-	err = os.WriteFile(srcSubFile, []byte("nested content"), 0644)
+	err = os.WriteFile(srcSubFile, []byte("nested content"), 0600)
 	require.NoError(t, err)
 
 	// 执行物理拷贝
@@ -672,10 +672,10 @@ func TestAtomicExchange(t *testing.T) {
 	source := filepath.Join(tmpDir, "source.txt")
 	target := filepath.Join(tmpDir, "target.txt")
 
-	err := os.WriteFile(source, []byte("source content"), 0644)
+	err := os.WriteFile(source, []byte("source content"), 0600)
 	require.NoError(t, err)
 
-	err = os.WriteFile(target, []byte("target content"), 0644)
+	err = os.WriteFile(target, []byte("target content"), 0600)
 	require.NoError(t, err)
 
 	// 执行原子交换
@@ -699,7 +699,7 @@ func TestAtomicExchangeNonExistent(t *testing.T) {
 	source := filepath.Join(tmpDir, "nonexistent.txt")
 	target := filepath.Join(tmpDir, "target.txt")
 
-	err := os.WriteFile(target, []byte("target content"), 0644)
+	err := os.WriteFile(target, []byte("target content"), 0600)
 	require.NoError(t, err)
 
 	// 交换不存在的文件应该返回错误
@@ -767,7 +767,7 @@ func TestRecreateWorkDir(t *testing.T) {
 
 	// 创建 work 目录
 	_ = os.MkdirAll(workDir, 0755)
-	_ = os.WriteFile(filepath.Join(workDir, "test.txt"), []byte("test"), 0644)
+	_ = os.WriteFile(filepath.Join(workDir, "test.txt"), []byte("test"), 0600)
 
 	// 重建 work 目录
 	err := recreateWorkDir(workDir)
@@ -791,7 +791,7 @@ func TestRecreateWorkDirExistingPurge(t *testing.T) {
 	// 创建 work 目录和 purge 目录
 	_ = os.MkdirAll(workDir, 0755)
 	_ = os.MkdirAll(purgeDir, 0755)
-	_ = os.WriteFile(filepath.Join(workDir, "test.txt"), []byte("test"), 0644)
+	_ = os.WriteFile(filepath.Join(workDir, "test.txt"), []byte("test"), 0600)
 
 	// 重建 work 目录（purge 目录已存在）
 	err := recreateWorkDir(workDir)
@@ -833,7 +833,7 @@ func TestDecompressCopy(t *testing.T) {
 	// 添加一个文件
 	err = tw.WriteHeader(&tar.Header{
 		Name: "test.txt",
-		Mode: 0644,
+		Mode: 0600,
 		Size: 11,
 	})
 	require.NoError(t, err)
@@ -862,7 +862,7 @@ func TestDecompressCopyInvalidFile(t *testing.T) {
 
 	// 创建无效的 tar.gz 文件
 	srcFile := filepath.Join(tmpDir, "invalid.tar.gz")
-	_ = os.WriteFile(srcFile, []byte("not a valid tar.gz"), 0644)
+	_ = os.WriteFile(srcFile, []byte("not a valid tar.gz"), 0600)
 
 	dstDir := filepath.Join(tmpDir, "dst")
 	err := decompressCopy(srcFile, dstDir)
@@ -954,7 +954,7 @@ func TestCopyDirSourceNotDir(t *testing.T) {
 
 	// 创建一个文件作为源
 	srcFile := filepath.Join(tmpDir, "src_file")
-	err = os.WriteFile(srcFile, []byte("test"), 0644)
+	err = os.WriteFile(srcFile, []byte("test"), 0600)
 	require.NoError(t, err)
 
 	// 测试源不是目录的错误路径

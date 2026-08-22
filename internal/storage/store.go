@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"syscall"
 	"time"
 
@@ -189,7 +190,7 @@ func (s *fileStore) CreateAgent(ctx context.Context, name string, defaultShmSize
 
 	// 初始化空 ports.json
 	portsPath := filepath.Join(agentPath, "ports.json")
-	if err := os.WriteFile(portsPath, []byte("[]\n"), 0644); err != nil {
+	if err := os.WriteFile(portsPath, []byte("[]\n"), 0600); err != nil {
 		return nil, fmt.Errorf("write ports: %w", err)
 	}
 
@@ -311,7 +312,7 @@ func (s *fileStore) ForkAgent(ctx context.Context, source, target string) (*Agen
 
 	// 重置 ports.json 为空
 	portsPath := filepath.Join(targetPath, "ports.json")
-	if err := os.WriteFile(portsPath, []byte("[]\n"), 0644); err != nil {
+	if err := os.WriteFile(portsPath, []byte("[]\n"), 0600); err != nil {
 		_ = os.RemoveAll(targetPath)
 		return nil, fmt.Errorf("reset ports.json: %w", err)
 	}
@@ -901,6 +902,9 @@ func decompressCopy(src, dst string) error {
 	}
 	defer gr.Close()
 
+	const maxDecompressedSize = 10 << 30 // 10GB limit to prevent decompression bombs
+	var totalSize int64
+
 	tr := tar.NewReader(gr)
 	for {
 		header, err := tr.Next()
@@ -911,7 +915,17 @@ func decompressCopy(src, dst string) error {
 			return err
 		}
 
+		// G305: Prevent path traversal
 		target := filepath.Join(dst, header.Name)
+		if !strings.HasPrefix(target, filepath.Clean(dst)+string(os.PathSeparator)) && target != filepath.Clean(dst) {
+			return fmt.Errorf("invalid tar entry path: %s", header.Name)
+		}
+
+		totalSize += header.Size
+		if totalSize > maxDecompressedSize {
+			return fmt.Errorf("decompressed size exceeds limit: %d > %d", totalSize, maxDecompressedSize)
+		}
+
 		switch header.Typeflag {
 		case tar.TypeDir:
 			if err := os.MkdirAll(target, header.FileInfo().Mode()); err != nil {

@@ -58,7 +58,7 @@ func TestConfigReloadIfChanged(t *testing.T) {
 	// 修改配置文件
 	configFile := filepath.Join(tmpDir, "config.json")
 	newData := []byte(`{"log_level":"debug","max_download_bytes":2147483648,"disable_cross_device_check":true,"default_shm_size_mb":128,"download_timeout":"10m","watchdog_timeout":"120s","watchdog_check_interval":"10s","mcp_allowed_uids":[1000],"mcp_allowed_gids":[1000],"seccomp_strategy":"whitelist","overlay_strategy":"overlayfs"}`)
-	require.NoError(t, os.WriteFile(configFile, newData, 0644))
+	require.NoError(t, os.WriteFile(configFile, newData, 0600))
 
 	// 等待文件系统时间更新（不同文件系统精度不同）
 	waitForFileChange(t, configFile, loaded.modTime)
@@ -90,7 +90,7 @@ func TestConfigOnReloadCallback(t *testing.T) {
 	// 修改配置
 	configFile := filepath.Join(tmpDir, "config.json")
 	newData := []byte(`{"log_level":"warn","max_download_bytes":1073741824,"disable_cross_device_check":false,"default_shm_size_mb":256,"download_timeout":"3m","watchdog_timeout":"30s","watchdog_check_interval":"3s","mcp_allowed_uids":[],"mcp_allowed_gids":[],"seccomp_strategy":"blacklist","overlay_strategy":"overlayfs"}`)
-	require.NoError(t, os.WriteFile(configFile, newData, 0644))
+	require.NoError(t, os.WriteFile(configFile, newData, 0600))
 
 	// 等待文件系统时间更新（不同文件系统精度不同）
 	waitForFileChange(t, configFile, cfg.modTime)
@@ -221,7 +221,7 @@ func TestConfigReloadMultipleTimes(t *testing.T) {
 	// 第一次修改
 	configFile := filepath.Join(tmpDir, "config.json")
 	newData1 := []byte(`{"default_shm_size_mb":128}`)
-	require.NoError(t, os.WriteFile(configFile, newData1, 0644))
+	require.NoError(t, os.WriteFile(configFile, newData1, 0600))
 	waitForFileChange(t, configFile, loaded.modTime)
 	require.NoError(t, loaded.ReloadIfChanged())
 	assert.Equal(t, 1, callbackCount)
@@ -229,7 +229,7 @@ func TestConfigReloadMultipleTimes(t *testing.T) {
 
 	// 第二次修改
 	newData2 := []byte(`{"default_shm_size_mb":256}`)
-	require.NoError(t, os.WriteFile(configFile, newData2, 0644))
+	require.NoError(t, os.WriteFile(configFile, newData2, 0600))
 	waitForFileChange(t, configFile, loaded.modTime)
 	require.NoError(t, loaded.ReloadIfChanged())
 	assert.Equal(t, 2, callbackCount)
@@ -250,7 +250,7 @@ func TestConfigReloadInvalidJSON(t *testing.T) {
 
 	// 写入无效 JSON
 	configFile := filepath.Join(tmpDir, "config.json")
-	require.NoError(t, os.WriteFile(configFile, []byte(`{invalid json}`), 0644))
+	require.NoError(t, os.WriteFile(configFile, []byte(`{invalid json}`), 0600))
 	waitForFileChange(t, configFile, loaded.modTime)
 
 	// 重载应失败，但不应改变当前配置
@@ -275,7 +275,7 @@ func TestConfigReloadPartialUpdate(t *testing.T) {
 	// 只修改部分字段
 	configFile := filepath.Join(tmpDir, "config.json")
 	newData := []byte(`{"log_level":"debug"}`)
-	require.NoError(t, os.WriteFile(configFile, newData, 0644))
+	require.NoError(t, os.WriteFile(configFile, newData, 0600))
 	waitForFileChange(t, configFile, loaded.modTime)
 	require.NoError(t, loaded.ReloadIfChanged())
 
@@ -300,7 +300,7 @@ func TestConfigReloadSnapshotCompressionLevel(t *testing.T) {
 	// 修改快照压缩级别
 	configFile := filepath.Join(tmpDir, "config.json")
 	newData := []byte(`{"snapshot_compression_level": 1}`)
-	require.NoError(t, os.WriteFile(configFile, newData, 0644))
+	require.NoError(t, os.WriteFile(configFile, newData, 0600))
 	waitForFileChange(t, configFile, loaded.modTime)
 	require.NoError(t, loaded.ReloadIfChanged())
 

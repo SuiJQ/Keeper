@@ -134,7 +134,7 @@ func TestProbeEnvironmentResult(t *testing.T) {
 func TestCheckConfigFileFound(t *testing.T) {
 	// 创建一个临时配置文件
 	tmpFile := filepath.Join(t.TempDir(), "config")
-	err := os.WriteFile(tmpFile, []byte("CONFIG_OVERLAY_FS_USERNS=y\n"), 0644)
+	err := os.WriteFile(tmpFile, []byte("CONFIG_OVERLAY_FS_USERNS=y\n"), 0600)
 	require.NoError(t, err)
 
 	result := checkConfigFile(tmpFile, "CONFIG_OVERLAY_FS_USERNS=y")
@@ -143,7 +143,7 @@ func TestCheckConfigFileFound(t *testing.T) {
 
 func TestCheckConfigFileNotFound(t *testing.T) {
 	tmpFile := filepath.Join(t.TempDir(), "config")
-	err := os.WriteFile(tmpFile, []byte("CONFIG_OTHER=y\n"), 0644)
+	err := os.WriteFile(tmpFile, []byte("CONFIG_OTHER=y\n"), 0600)
 	require.NoError(t, err)
 
 	result := checkConfigFile(tmpFile, "CONFIG_OVERLAY_FS_USERNS=y")

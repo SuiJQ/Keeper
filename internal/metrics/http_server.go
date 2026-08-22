@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"time"
 )
 
 // HTTPServer 指标 HTTP 服务器
@@ -78,8 +79,9 @@ func (s *HTTPServer) Start() error {
 	})
 
 	s.server = &http.Server{
-		Addr:    s.addr,
-		Handler: mux,
+		Addr:              s.addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 
 	server := s.server

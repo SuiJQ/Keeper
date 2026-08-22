@@ -1,4 +1,4 @@
-// Package agent 定义 Agent 状态机和核心接口
+// Package agent defines Agent state machine and core interfaces.
 package agent
 
 import (
@@ -7,23 +7,23 @@ import (
 	"time"
 )
 
-// State Agent 状态枚举
+// State is the Agent state enumeration.
 type State string
 
 const (
-	// StateCreated 已创建，未启动
+	// StateCreated is created, not started.
 	StateCreated State = "created"
-	// StateStopped 已停止
+	// StateStopped is stopped.
 	StateStopped State = "stopped"
-	// StateRunning 运行中
+	// StateRunning is running.
 	StateRunning State = "running"
-	// StateFatalKernel 内核不支持 OverlayFS+UserNS
+	// StateFatalKernel is kernel does not support OverlayFS+UserNS.
 	StateFatalKernel State = "fatal_unsupported_kernel"
-	// StateFatalDState 检测到 D 状态进程
+	// StateFatalDState is D state process detected.
 	StateFatalDState State = "fatal_d_state"
-	// StateFatalBwrap 无法执行 bwrap
+	// StateFatalBwrap is cannot execute bwrap.
 	StateFatalBwrap State = "fatal_bwrap_exec"
-	// StateFatalNoSpace 存储空间不足
+	// StateFatalNoSpace is storage space insufficient.
 	StateFatalNoSpace State = "fatal_no_space"
 )
 

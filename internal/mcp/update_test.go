@@ -119,7 +119,7 @@ func TestUpdateAllowedUIDsConcurrent(t *testing.T) {
 		go func(id uint32) {
 			server.UpdateAllowedUIDs([]uint32{id, id + 1000})
 			done <- true
-		}(uint32(i))
+		}(safeUint32(i))
 	}
 
 	for i := 0; i < 10; i++ {

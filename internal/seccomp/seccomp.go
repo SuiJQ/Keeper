@@ -3,6 +3,7 @@ package seccomp
 
 import (
 	"encoding/binary"
+	"fmt"
 )
 
 // BPFInstruction Seccomp BPF 指令（8 字节）
@@ -447,10 +448,13 @@ func generateWhitelistBPF(prog *BPFProgram, allowed map[uint32]bool, denied map[
 		// 需要计算跳转偏移
 		// 当前指令索引 = 1 + i
 		// 目标指令索引 = 1 + len(syscallNums) + 1 (ALLOW 标签)
-		jumpOffset := uint8(len(syscallNums) - i + 1)
+		jumpOffset := len(syscallNums) - i + 1
+		if jumpOffset > 255 {
+			return nil, fmt.Errorf("too many syscalls for BPF jump offset: %d > 255", jumpOffset)
+		}
 		prog.Instructions = append(prog.Instructions, BPFInstruction{
 			Opcode: BPF_JMP | BPF_JEQ | BPF_K,
-			Jt:     jumpOffset,
+			Jt:     uint8(jumpOffset),
 			Jf:     1,
 			K:      num,
 		})
@@ -502,10 +506,13 @@ func generateBlacklistBPF(prog *BPFProgram, denied map[uint32]bool, defaultActio
 	for _, num := range syscallNums {
 		// A == num -> 跳转到 DENY
 		// 跳转偏移需要计算
-		denyOffset := uint8(len(syscallNums) - 1 + 1) // 到 DENY 的偏移
+		denyOffset := len(syscallNums)
+		if denyOffset > 255 {
+			return nil, fmt.Errorf("too many syscalls for BPF jump offset: %d > 255", denyOffset)
+		}
 		prog.Instructions = append(prog.Instructions, BPFInstruction{
 			Opcode: BPF_JMP | BPF_JEQ | BPF_K,
-			Jt:     denyOffset,
+			Jt:     uint8(denyOffset),
 			Jf:     1,
 			K:      num,
 		})
