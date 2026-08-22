@@ -69,7 +69,7 @@ func (f *Forwarder) Start() error {
 	startTime := time.Now()
 	for _, pf := range f.portForwards {
 		if err := f.startForward(pf); err != nil {
-			f.Stop()
+			f.stopInternal()
 			RecordPortForward("error")
 			RecordPortForwardDuration(time.Since(startTime).Seconds())
 			return fmt.Errorf("start forward %s: %w", pf.String(), err)
@@ -216,7 +216,11 @@ func ioCopy(dst, src net.Conn) (int64, error) {
 func (f *Forwarder) Stop() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.stopInternal()
+}
 
+// stopInternal 内部停止方法（不持有锁，避免死锁）
+func (f *Forwarder) stopInternal() {
 	for _, listener := range f.listeners {
 		listener.Close()
 	}

@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	"keeper/internal/log"
 )
 
@@ -220,4 +222,122 @@ func TestForwarderNoConnectionLimit(t *testing.T) {
 	for _, c := range conns {
 		c.Close()
 	}
+}
+
+func TestForwarderAddForward(t *testing.T) {
+	logger := log.Global()
+	forwarder := NewForwarder(logger)
+
+	// 添加第一个端口转发
+	pf1 := &PortForward{
+		Host:     8768,
+		Container: 9003,
+		Protocol: "tcp",
+	}
+	err := forwarder.AddForward(pf1)
+	assert.NoError(t, err)
+	assert.Len(t, forwarder.portForwards, 1)
+
+	// 添加第二个不同的端口转发
+	pf2 := &PortForward{
+		Host:     8769,
+		Container: 9004,
+		Protocol: "tcp",
+	}
+	err = forwarder.AddForward(pf2)
+	assert.NoError(t, err)
+	assert.Len(t, forwarder.portForwards, 2)
+
+	// 尝试添加重复的端口转发
+	pf3 := &PortForward{
+		Host:     8768, // 与 pf1 相同
+		Container: 9005,
+		Protocol: "tcp",
+	}
+	err = forwarder.AddForward(pf3)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "already forwarded")
+	assert.Len(t, forwarder.portForwards, 2) // 不应增加
+}
+
+func TestForwarderStartStop(t *testing.T) {
+	logger := log.Global()
+	forwarder := NewForwarder(logger)
+
+	// 添加端口转发
+	pf := &PortForward{
+		Host:     8770,
+		Container: 9006,
+		Protocol: "tcp",
+	}
+	err := forwarder.AddForward(pf)
+	assert.NoError(t, err)
+
+	// 模拟容器监听
+	containerListener, err := net.Listen("tcp", "127.0.0.1:9006")
+	if err != nil {
+		t.Fatalf("failed to listen on container: %v", err)
+	}
+	defer containerListener.Close()
+
+	go func() {
+		for {
+			conn, err := containerListener.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				buf := make([]byte, 1024)
+				for {
+					_, err := c.Read(buf)
+					if err != nil {
+						return
+					}
+				}
+			}(conn)
+		}
+	}()
+
+	// 启动转发
+	err = forwarder.Start()
+	assert.NoError(t, err)
+	assert.Len(t, forwarder.listeners, 1)
+
+	// 验证可以连接
+	conn, err := net.Dial("tcp", "127.0.0.1:8770")
+	assert.NoError(t, err)
+	conn.Close()
+
+	// 停止转发
+	forwarder.Stop()
+	assert.Len(t, forwarder.listeners, 0)
+	assert.Len(t, forwarder.portForwards, 0)
+	assert.Len(t, forwarder.activeConnections, 0)
+}
+
+func TestForwarderStartFailure(t *testing.T) {
+	logger := log.Global()
+	forwarder := NewForwarder(logger)
+
+	// 添加一个端口转发，但目标端口已被占用
+	pf := &PortForward{
+		Host:     8771,
+		Container: 9007,
+		Protocol: "tcp",
+	}
+	err := forwarder.AddForward(pf)
+	assert.NoError(t, err)
+
+	// 在 Host 端口上启动一个监听器，导致 startForward 失败
+	existingListener, err := net.Listen("tcp", "127.0.0.1:8771")
+	if err != nil {
+		t.Fatalf("failed to listen: %v", err)
+	}
+	defer existingListener.Close()
+
+	// 启动转发应该失败
+	err = forwarder.Start()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "listen on")
 }
