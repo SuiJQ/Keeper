@@ -216,3 +216,98 @@ func TestCounterNegativeAdd(t *testing.T) {
 	counter.Add(-3)
 	assert.Equal(t, int64(7), counter.Get())
 }
+// TestRegistryGetters 测试 Registry 的 Getter 方法
+func TestRegistryGetters(t *testing.T) {
+	registry := newTestRegistry()
+
+	// 注册一些指标
+	counter := registry.RegisterCounter("getter_counter", "A test counter", []string{"label"})
+	gauge := registry.RegisterGauge("getter_gauge", "A test gauge", []string{"label"})
+	histogram := registry.RegisterHistogram("getter_histogram", "A test histogram", []float64{1, 2, 3}, []string{"label"})
+	summary := registry.RegisterSummary("getter_summary", "A test summary", map[float64]float64{0.5: 0.05}, []string{"label"})
+
+	// 测试 GetCounter
+	c, exists := registry.GetCounter("getter_counter")
+	assert.True(t, exists)
+	assert.Equal(t, counter, c)
+
+	// 测试 GetGauge
+	g, exists := registry.GetGauge("getter_gauge")
+	assert.True(t, exists)
+	assert.Equal(t, gauge, g)
+
+	// 测试 GetHistogram
+	h, exists := registry.GetHistogram("getter_histogram")
+	assert.True(t, exists)
+	assert.Equal(t, histogram, h)
+
+	// 测试 GetSummary
+	s, exists := registry.GetSummary("getter_summary")
+	assert.True(t, exists)
+	assert.Equal(t, summary, s)
+
+	// 测试获取不存在的指标
+	_, exists = registry.GetCounter("nonexistent")
+	assert.False(t, exists)
+
+	_, exists = registry.GetGauge("nonexistent")
+	assert.False(t, exists)
+
+	_, exists = registry.GetHistogram("nonexistent")
+	assert.False(t, exists)
+
+	_, exists = registry.GetSummary("nonexistent")
+	assert.False(t, exists)
+}
+
+// TestRegistryRegisterDuplicate 测试重复注册
+func TestRegistryRegisterDuplicate(t *testing.T) {
+	registry := newTestRegistry()
+
+	// 第一次注册
+	c1 := registry.RegisterCounter("dup_counter", "First", []string{})
+	// 第二次注册应该返回同一个实例
+	c2 := registry.RegisterCounter("dup_counter", "Second", []string{})
+	assert.Equal(t, c1, c2)
+
+	h1 := registry.RegisterHistogram("dup_histogram", "First", []float64{1}, []string{})
+	h2 := registry.RegisterHistogram("dup_histogram", "Second", []float64{2}, []string{})
+	assert.Equal(t, h1, h2)
+
+	s1 := registry.RegisterSummary("dup_summary", "First", map[float64]float64{0.5: 0.05}, []string{})
+	s2 := registry.RegisterSummary("dup_summary", "Second", map[float64]float64{0.9: 0.01}, []string{})
+	assert.Equal(t, s1, s2)
+}
+
+// TestHTTPServerSetChecks 测试设置健康检查与就绪检查
+func TestHTTPServerSetChecks(t *testing.T) {
+	server := NewHTTPServer(":0")
+
+	healthCalled := false
+	readyCalled := false
+
+	server.SetHealthCheck(func() error {
+		healthCalled = true
+		return nil
+	})
+
+	server.SetReadyCheck(func() error {
+		readyCalled = true
+		return nil
+	})
+
+	// 验证检查函数已设置（通过内部状态）
+	server.mu.Lock()
+	assert.NotNil(t, server.healthCheck)
+	assert.NotNil(t, server.readyCheck)
+	server.mu.Unlock()
+
+	// 调用检查函数
+	err := server.healthCheck()
+	assert.NoError(t, err)
+	assert.True(t, healthCalled)
+
+	err = server.readyCheck()
+	assert.NoError(t, err)
+	assert.True(t, readyCalled)
+}

@@ -1072,3 +1072,45 @@ func TestListSnapshotsEmpty(t *testing.T) {
 	// 清理
 	_ = destroyAgent(cfg, []string{agentName})
 }
+// TestKillProcessInvalidPID 测试 killProcess 无效 PID
+func TestKillProcessInvalidPID(t *testing.T) {
+	// PID <= 0 应直接返回 nil
+	assert.NoError(t, killProcess(0))
+	assert.NoError(t, killProcess(-1))
+}
+
+// TestKillProcessNonExistent 测试 killProcess 不存在的进程
+func TestKillProcessNonExistent(t *testing.T) {
+	// 使用一个几乎肯定不存在的 PID
+	err := killProcess(9999999)
+	assert.Error(t, err)
+}
+
+// TestInspectAgentVerbose 测试 inspectAgent verbose 模式
+func TestInspectAgentVerbose(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	require.NoError(t, createAgent(cfg, []string{"verbose-agent"}))
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err = inspectAgent(cfg, []string{"verbose-agent", "--verbose"})
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	require.NoError(t, err)
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+
+	assert.Contains(t, output, "NAME:       verbose-agent")
+	assert.Contains(t, output, "DEVICE INFO:")
+	assert.Contains(t, output, "Rootfs Device ID:")
+}

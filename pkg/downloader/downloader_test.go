@@ -605,3 +605,80 @@ func TestDownloadChunk(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 100, len(data))
 }
+
+// TestDownloadChunkHTTPError 测试 downloadChunk HTTP 错误
+func TestDownloadChunkHTTPError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer ts.Close()
+
+	tmpFile := filepath.Join(t.TempDir(), "error_chunked.bin")
+	file, err := os.Create(tmpFile)
+	require.NoError(t, err)
+	defer file.Close()
+
+	_ = file.Truncate(100)
+
+	downloader := NewDownloader(&Config{
+		URL:        ts.URL,
+		OutputPath: tmpFile,
+		Threads:    1,
+		MaxRetries: 1,
+		RetryDelay: 0,
+	}, nil)
+
+	ctx := context.Background()
+	err = downloader.downloadChunk(ctx, file, Chunk{Start: 0, End: 49}, 100)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "HTTP 404")
+}
+
+// TestDownloadChunkContextCancel 测试 downloadChunk 上下文取消
+func TestDownloadChunkContextCancel(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 慢速响应
+		time.Sleep(100 * time.Millisecond)
+		w.Header().Set("Content-Range", "bytes 0-49/100")
+		w.WriteHeader(http.StatusPartialContent)
+		for i := 0; i < 50; i++ {
+			_, _ = w.Write([]byte{byte(i)})
+		}
+	}))
+	defer ts.Close()
+
+	tmpFile := filepath.Join(t.TempDir(), "cancel_chunked.bin")
+	file, err := os.Create(tmpFile)
+	require.NoError(t, err)
+	defer file.Close()
+
+	_ = file.Truncate(100)
+
+	downloader := NewDownloader(&Config{
+		URL:        ts.URL,
+		OutputPath: tmpFile,
+		Threads:    1,
+		Timeout:    5 * time.Second,
+	}, nil)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	// 立即取消
+	cancel()
+
+	err = downloader.downloadChunk(ctx, file, Chunk{Start: 0, End: 49}, 100)
+	assert.Error(t, err)
+	assert.Equal(t, context.Canceled, err)
+}
+
+// TestDownloadChunkWriteError 测试 downloadChunk 写入错误
+func TestDownloadChunkWriteError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Range", "bytes 0-49/100")
+		w.WriteHeader(http.StatusPartialContent)
+		for i := 0; i < 50; i++ {
+			_, _ = w.Write([]byte{byte(i)})
+		}
+	}))
+	defer ts.Close()
+
+}
