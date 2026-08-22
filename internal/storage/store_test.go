@@ -908,3 +908,57 @@ func TestPruneCacheEmpty(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, deleted)
 }
+// TestCopyDirEmptyOnly 测试 copyDir emptyOnly 分支
+func TestCopyDirEmptyOnly(t *testing.T) {
+	tmpDir := t.TempDir()
+	store, err := NewStore(tmpDir)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	_, err = store.CreateAgent(ctx, "test-agent", 64, 1024*1024*1024)
+	require.NoError(t, err)
+
+	// 测试 emptyOnly 路径
+	err = store.(*fileStore).copyDir("/nonexistent/src", filepath.Join(tmpDir, "agents", "test-agent", "work"), true)
+	assert.NoError(t, err)
+
+	// 验证目录已创建
+	_, err = os.Stat(filepath.Join(tmpDir, "agents", "test-agent", "work"))
+	assert.NoError(t, err)
+}
+
+// TestCopyDirSourceNotExist 测试 copyDir 源不存在
+func TestCopyDirSourceNotExist(t *testing.T) {
+	tmpDir := t.TempDir()
+	store, err := NewStore(tmpDir)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	_, err = store.CreateAgent(ctx, "test-agent", 64, 1024*1024*1024)
+	require.NoError(t, err)
+
+	// 测试源不存在的错误路径
+	err = store.(*fileStore).copyDir("/nonexistent/src", filepath.Join(tmpDir, "agents", "test-agent", "work_copy"), false)
+	assert.Error(t, err)
+}
+
+// TestCopyDirSourceNotDir 测试 copyDir 源不是目录
+func TestCopyDirSourceNotDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	store, err := NewStore(tmpDir)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	_, err = store.CreateAgent(ctx, "test-agent", 64, 1024*1024*1024)
+	require.NoError(t, err)
+
+	// 创建一个文件作为源
+	srcFile := filepath.Join(tmpDir, "src_file")
+	err = os.WriteFile(srcFile, []byte("test"), 0644)
+	require.NoError(t, err)
+
+	// 测试源不是目录的错误路径
+	err = store.(*fileStore).copyDir(srcFile, filepath.Join(tmpDir, "agents", "test-agent", "work_copy"), false)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "is not a directory")
+}
