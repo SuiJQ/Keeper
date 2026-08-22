@@ -198,6 +198,48 @@ func TestIsProcessAlive(t *testing.T) {
 	assert.False(t, isProcessAlive(999999))
 }
 
+// TestWatchdogCheckAgentProcessNotFound 测试 checkAgent 检测进程不存在
+func TestWatchdogCheckAgentProcessNotFound(t *testing.T) {
+	wd := NewWatchdog(WatchdogConfig{}, nil)
+
+	// 注册一个 agent，使用不存在的 PID
+	wd.RegisterAgent("ghost-agent", 9999999)
+
+	// 检查 agent
+	wd.checkAgent(&AgentInfo{
+		Name: "ghost-agent",
+		PID:  9999999,
+	})
+
+	// 验证 agent 已被注销
+	wd.mu.Lock()
+	_, exists := wd.agents["ghost-agent"]
+	wd.mu.Unlock()
+	assert.False(t, exists, "agent should be unregistered after process not found")
+}
+
+// TestWatchdogCheckAgentTimeout 测试 checkAgent 检测超时
+// TestWatchdogTriggerStopGraceful 测试优雅停止
+func TestWatchdogTriggerStopGraceful(t *testing.T) {
+	wd := NewWatchdog(WatchdogConfig{}, nil)
+
+	// 创建一个子进程
+	cmd := exec.Command("sleep", "10")
+	err := cmd.Start()
+	require.NoError(t, err)
+	defer func() { _ = cmd.Process.Kill() }()
+
+	// 注册 agent
+	wd.RegisterAgent("sleep-agent", cmd.Process.Pid)
+
+	// 触发停止
+	err = wd.TriggerStop("sleep-agent")
+	assert.NoError(t, err)
+
+	// TriggerStop 应该已经处理了进程终止
+	// 这里我们只验证不会 panic，不验证内部状态
+}
+
 // TestWatchdogUpdateTimeout 测试更新看门狗超时
 func TestWatchdogUpdateTimeout(t *testing.T) {
 	wd := NewWatchdog(WatchdogConfig{
