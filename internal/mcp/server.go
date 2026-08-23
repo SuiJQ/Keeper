@@ -1,3 +1,5 @@
+//go:build linux
+
 package mcp
 
 import (
@@ -299,7 +301,7 @@ func (s *Server) authorize(cred *syscall.Ucred) error {
 	}
 
 	if len(s.allowedGIDs) > 0 {
-		if !groupMember(cred.Gid, s.allowedGIDs) {
+		if !groupMember(cred.Uid, cred.Gid, s.allowedGIDs) {
 			return fmt.Errorf("gid %d not allowed", cred.Gid)
 		}
 	}
@@ -307,13 +309,13 @@ func (s *Server) authorize(cred *syscall.Ucred) error {
 	return nil
 }
 
-// groupMember 判断 GID 是否在白名单中，或属于白名单中的附属组
-func groupMember(gid uint32, allowedGIDs map[uint32]struct{}) bool {
+// groupMember 判断客户端 GID 是否在白名单中，或客户端所属用户是否属于白名单中的附属组
+func groupMember(clientUID uint32, gid uint32, allowedGIDs map[uint32]struct{}) bool {
 	if _, ok := allowedGIDs[gid]; ok {
 		return true
 	}
 
-	u, err := user.Lookup(fmt.Sprintf("%d", os.Getuid()))
+	u, err := user.Lookup(fmt.Sprintf("%d", clientUID))
 	if err != nil {
 		return false
 	}
@@ -383,120 +385,148 @@ func (s *Server) handleInitialize(req Request) Response {
 // handleToolsList 处理工具列表请求
 func (s *Server) handleToolsList(req Request) Response {
 	tools := []Tool{
-		{
-			Name:        "keeper.create",
-			Description: "创建新 Agent",
-			InputSchema: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"name": map[string]interface{}{
-						"type":        "string",
-						"description": "Agent 名称",
-					},
-				},
-				"required": []string{"name"},
-			},
-		},
-		{
-			Name:        "keeper.start",
-			Description: "启动 Agent",
-			InputSchema: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"name": map[string]interface{}{
-						"type":        "string",
-						"description": "Agent 名称",
-					},
-				},
-				"required": []string{"name"},
-			},
-		},
-		{
-			Name:        "keeper.stop",
-			Description: "停止 Agent",
-			InputSchema: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"name": map[string]interface{}{
-						"type":        "string",
-						"description": "Agent 名称",
-					},
-				},
-				"required": []string{"name"},
-			},
-		},
-		{
-			Name:        "keeper.list",
-			Description: "列出所有 Agent",
-			InputSchema: map[string]interface{}{
-				"type":       "object",
-				"properties": map[string]interface{}{},
-			},
-		},
-		{
-			Name:        "keeper.inspect",
-			Description: "查看 Agent 详细信息",
-			InputSchema: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"name": map[string]interface{}{
-						"type":        "string",
-						"description": "Agent 名称",
-					},
-					"verbose": map[string]interface{}{
-						"type":        "boolean",
-						"description": "显示详细设备信息",
-					},
-				},
-				"required": []string{"name"},
-			},
-		},
-		{
-			Name:        "keeper.fork",
-			Description: "克隆 Agent",
-			InputSchema: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"source": map[string]interface{}{
-						"type":        "string",
-						"description": "源 Agent 名称",
-					},
-					"target": map[string]interface{}{
-						"type":        "string",
-						"description": "目标 Agent 名称",
-					},
-				},
-				"required": []string{"source", "target"},
-			},
-		},
-		{
-			Name:        "keeper.cp",
-			Description: "在宿主机和 Agent workspace 之间复制文件",
-			InputSchema: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"source": map[string]interface{}{
-						"type":        "string",
-						"description": "源路径（本地路径或 agent:path）",
-					},
-					"destination": map[string]interface{}{
-						"type":        "string",
-						"description": "目标路径（本地路径或 agent:path）",
-					},
-					"recursive": map[string]interface{}{
-						"type":        "boolean",
-						"description": "递归复制目录",
-					},
-				},
-				"required": []string{"source", "destination"},
-			},
-		},
+		newCreateTool(),
+		newStartTool(),
+		newStopTool(),
+		newListTool(),
+		newInspectTool(),
+		newForkTool(),
+		newCpTool(),
 	}
 
 	return Response{
 		ID: req.ID,
 		Result: map[string]interface{}{
 			"tools": tools,
+		},
+	}
+}
+
+func newCreateTool() Tool {
+	return Tool{
+		Name:        "keeper.create",
+		Description: "创建新 Agent",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"name": map[string]interface{}{
+					"type":        "string",
+					"description": "Agent 名称",
+				},
+			},
+			"required": []string{"name"},
+		},
+	}
+}
+
+func newStartTool() Tool {
+	return Tool{
+		Name:        "keeper.start",
+		Description: "启动 Agent",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"name": map[string]interface{}{
+					"type":        "string",
+					"description": "Agent 名称",
+				},
+			},
+			"required": []string{"name"},
+		},
+	}
+}
+
+func newStopTool() Tool {
+	return Tool{
+		Name:        "keeper.stop",
+		Description: "停止 Agent",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"name": map[string]interface{}{
+					"type":        "string",
+					"description": "Agent 名称",
+				},
+			},
+			"required": []string{"name"},
+		},
+	}
+}
+
+func newListTool() Tool {
+	return Tool{
+		Name:        "keeper.list",
+		Description: "列出所有 Agent",
+		InputSchema: map[string]interface{}{
+			"type":       "object",
+			"properties": map[string]interface{}{},
+		},
+	}
+}
+
+func newInspectTool() Tool {
+	return Tool{
+		Name:        "keeper.inspect",
+		Description: "查看 Agent 详细信息",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"name": map[string]interface{}{
+					"type":        "string",
+					"description": "Agent 名称",
+				},
+				"verbose": map[string]interface{}{
+					"type":        "boolean",
+					"description": "显示详细设备信息",
+				},
+			},
+			"required": []string{"name"},
+		},
+	}
+}
+
+func newForkTool() Tool {
+	return Tool{
+		Name:        "keeper.fork",
+		Description: "克隆 Agent",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"source": map[string]interface{}{
+					"type":        "string",
+					"description": "源 Agent 名称",
+				},
+				"target": map[string]interface{}{
+					"type":        "string",
+					"description": "目标 Agent 名称",
+				},
+			},
+			"required": []string{"source", "target"},
+		},
+	}
+}
+
+func newCpTool() Tool {
+	return Tool{
+		Name:        "keeper.cp",
+		Description: "在宿主机和 Agent workspace 之间复制文件",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"source": map[string]interface{}{
+					"type":        "string",
+					"description": "源路径（本地路径或 agent:path）",
+				},
+				"destination": map[string]interface{}{
+					"type":        "string",
+					"description": "目标路径（本地路径或 agent:path）",
+				},
+				"recursive": map[string]interface{}{
+					"type":        "boolean",
+					"description": "递归复制目录",
+				},
+			},
+			"required": []string{"source", "destination"},
 		},
 	}
 }
@@ -637,63 +667,80 @@ func findKeeperBinary() (string, error) {
 func mapMCPToKeeper(name string, args map[string]interface{}) (string, []string, error) {
 	switch name {
 	case "keeper.create":
-		name, ok := args["name"].(string)
-		if !ok || name == "" {
-			return "", nil, fmt.Errorf("missing required arg: name")
-		}
-		return "create", []string{name}, nil
-
+		return mapCreateArgs(args)
 	case "keeper.start":
-		name, ok := args["name"].(string)
-		if !ok || name == "" {
-			return "", nil, fmt.Errorf("missing required arg: name")
-		}
-		return "start", []string{name}, nil
-
+		return mapStartArgs(args)
 	case "keeper.stop":
-		name, ok := args["name"].(string)
-		if !ok || name == "" {
-			return "", nil, fmt.Errorf("missing required arg: name")
-		}
-		return "stop", []string{name}, nil
-
+		return mapStopArgs(args)
 	case "keeper.list":
 		return "list", nil, nil
-
 	case "keeper.inspect":
-		name, ok := args["name"].(string)
-		if !ok || name == "" {
-			return "", nil, fmt.Errorf("missing required arg: name")
-		}
-		verbose := ""
-		if v, ok := args["verbose"].(bool); ok && v {
-			verbose = "--verbose"
-		}
-		return "inspect", []string{name, verbose}, nil
-
+		return mapInspectArgs(args)
 	case "keeper.fork":
-		source, ok1 := args["source"].(string)
-		target, ok2 := args["target"].(string)
-		if !ok1 || !ok2 || source == "" || target == "" {
-			return "", nil, fmt.Errorf("missing required args: source, target")
-		}
-		return "fork", []string{source, target}, nil
-
+		return mapForkArgs(args)
 	case "keeper.cp":
-		src, ok1 := args["source"].(string)
-		dst, ok2 := args["destination"].(string)
-		if !ok1 || !ok2 || src == "" || dst == "" {
-			return "", nil, fmt.Errorf("missing required args: source, destination")
-		}
-		recursive := ""
-		if v, ok := args["recursive"].(bool); ok && v {
-			recursive = "-r"
-		}
-		return "cp", []string{recursive, src, dst}, nil
-
+		return mapCpArgs(args)
 	default:
 		return "", nil, fmt.Errorf("unknown tool: %s", name)
 	}
+}
+
+func mapCreateArgs(args map[string]interface{}) (string, []string, error) {
+	name, ok := args["name"].(string)
+	if !ok || name == "" {
+		return "", nil, fmt.Errorf("missing required arg: name")
+	}
+	return "create", []string{name}, nil
+}
+
+func mapStartArgs(args map[string]interface{}) (string, []string, error) {
+	name, ok := args["name"].(string)
+	if !ok || name == "" {
+		return "", nil, fmt.Errorf("missing required arg: name")
+	}
+	return "start", []string{name}, nil
+}
+
+func mapStopArgs(args map[string]interface{}) (string, []string, error) {
+	name, ok := args["name"].(string)
+	if !ok || name == "" {
+		return "", nil, fmt.Errorf("missing required arg: name")
+	}
+	return "stop", []string{name}, nil
+}
+
+func mapInspectArgs(args map[string]interface{}) (string, []string, error) {
+	name, ok := args["name"].(string)
+	if !ok || name == "" {
+		return "", nil, fmt.Errorf("missing required arg: name")
+	}
+	verbose := ""
+	if v, ok := args["verbose"].(bool); ok && v {
+		verbose = "--verbose"
+	}
+	return "inspect", []string{name, verbose}, nil
+}
+
+func mapForkArgs(args map[string]interface{}) (string, []string, error) {
+	source, ok1 := args["source"].(string)
+	target, ok2 := args["target"].(string)
+	if !ok1 || !ok2 || source == "" || target == "" {
+		return "", nil, fmt.Errorf("missing required args: source, target")
+	}
+	return "fork", []string{source, target}, nil
+}
+
+func mapCpArgs(args map[string]interface{}) (string, []string, error) {
+	src, ok1 := args["source"].(string)
+	dst, ok2 := args["destination"].(string)
+	if !ok1 || !ok2 || src == "" || dst == "" {
+		return "", nil, fmt.Errorf("missing required args: source, destination")
+	}
+	recursive := ""
+	if v, ok := args["recursive"].(bool); ok && v {
+		recursive = "-r"
+	}
+	return "cp", []string{recursive, src, dst}, nil
 }
 
 // Socket 路径管理

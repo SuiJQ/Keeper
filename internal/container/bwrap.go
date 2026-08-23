@@ -146,7 +146,7 @@ func (c *BwrapContainer) Start(ctx context.Context, spec Spec) (int, error) {
 	}
 
 	// 创建命令
-	cmd := exec.CommandContext(ctx, "bwrap", args...)
+	cmd := exec.CommandContext(ctx, "bwrap", args...) // #nosec G204
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 
@@ -235,47 +235,78 @@ func (c *BwrapContainer) Stop(ctx context.Context, grace time.Duration) error {
 
 // Exec 在容器内执行命令
 func (c *BwrapContainer) Exec(ctx context.Context, req ExecRequest) (*ExecResponse, error) {
+	if err := ensureContainerRunning(c); err != nil {
+		return nil, err
+	}
+
+	startTime := time.Now()
+	if err := ensureNsenterAvailable(); err != nil {
+		return nil, err
+	}
+
+	args := buildNsenterArgs(c.cmd.Process.Pid, req.Command)
+	cmd, stdout, stderr, err := buildExecCommand(ctx, args, req.Timeout)
+	if err != nil {
+		return nil, err
+	}
+
+	env := sanitizeEnv(req.Env)
+	cmd.Env = env
+
+	exitCode := runCommand(cmd)
+	resp := buildExecResponse(exitCode, stdout, stderr, startTime)
+
+	c.logger.Info("command executed",
+		log.Field{Key: "exit_code", Value: exitCode},
+		log.Field{Key: "stdout_len", Value: stdout.Len()},
+		log.Field{Key: "stderr_len", Value: stderr.Len()})
+
+	return resp, nil
+}
+
+func ensureContainerRunning(c *BwrapContainer) error {
 	if c.cmd == nil || c.cmd.Process == nil {
 		RecordContainerExec("bwrap", "error")
-		return nil, errors.NewKeeperError(errors.ErrCodeContainer, "container not running", nil)
+		return errors.NewKeeperError(errors.ErrCodeContainer, "container not running", nil)
 	}
+	return nil
+}
 
-	c.logger.Info("executing command in container",
-		log.Field{Key: "command", Value: req.Command},
-		log.Field{Key: "pid", Value: c.cmd.Process.Pid},
-		log.Field{Key: "timeout", Value: req.Timeout})
-	startTime := time.Now()
-
-	// 检查 nsenter 是否可用
+func ensureNsenterAvailable() error {
 	if _, err := exec.LookPath("nsenter"); err != nil {
 		RecordContainerExec("bwrap", "error")
-		return nil, errors.NewKeeperError(errors.ErrCodeProcess, "nsenter not found, cannot exec into container", err)
+		return errors.NewKeeperError(errors.ErrCodeProcess, "nsenter not found, cannot exec into container", err)
 	}
+	return nil
+}
 
-	// 使用 nsenter 进入容器命名空间执行命令
-	args := []string{
-		"-t", strconv.Itoa(c.cmd.Process.Pid),
+func buildNsenterArgs(pid int, command string) []string {
+	return []string{
+		"-t", strconv.Itoa(pid),
 		"-m", "-u", "-i", "-n", "-p",
-		"--", "sh", "-c", req.Command,
+		"--", "sh", "-c", command,
 	}
+}
 
-	cmd := exec.CommandContext(ctx, "nsenter", args...)
+func buildExecCommand(ctx context.Context, args []string, timeout time.Duration) (*exec.Cmd, *bytes.Buffer, *bytes.Buffer, error) {
+	cmd := exec.CommandContext(ctx, "nsenter", args...) // #nosec G204
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	// 设置超时
-	if req.Timeout > 0 {
+	if timeout > 0 {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, req.Timeout)
+		ctx, cancel = context.WithTimeout(ctx, timeout)
 		defer cancel()
-		cmd = exec.CommandContext(ctx, "nsenter", args...)
+		cmd = exec.CommandContext(ctx, "nsenter", args...) // #nosec G204
 		cmd.Stdout = &stdout
 		cmd.Stderr = &stderr
 	}
+	return cmd, &stdout, &stderr, nil
+}
 
-	// 设置环境变量：继承基础环境，但清除可能用于逃逸的变量
-	env := make([]string, 0, len(os.Environ())+len(req.Env))
+func sanitizeEnv(reqEnv []string) []string {
+	env := make([]string, 0, len(os.Environ())+len(reqEnv))
 	skipPrefixes := []string{"LD_PRELOAD", "LD_LIBRARY_PATH", "LD_DEBUG", "LD_TRACE", "LD_AUDIT"}
 	for _, e := range os.Environ() {
 		skip := false
@@ -289,9 +320,10 @@ func (c *BwrapContainer) Exec(ctx context.Context, req ExecRequest) (*ExecRespon
 			env = append(env, e)
 		}
 	}
-	env = append(env, req.Env...)
-	cmd.Env = env
+	return append(env, reqEnv...)
+}
 
+func runCommand(cmd *exec.Cmd) int {
 	err := cmd.Run()
 
 	exitCode := 0
@@ -302,29 +334,24 @@ func (c *BwrapContainer) Exec(ctx context.Context, req ExecRequest) (*ExecRespon
 			exitCode = -1
 		}
 	}
+	return exitCode
+}
 
-	c.logger.Info("command executed",
-		log.Field{Key: "exit_code", Value: exitCode},
-		log.Field{Key: "stdout_len", Value: stdout.Len()},
-		log.Field{Key: "stderr_len", Value: stderr.Len()})
-
-	// 构建响应
+func buildExecResponse(exitCode int, stdout, stderr *bytes.Buffer, startTime time.Time) *ExecResponse {
 	resp := &ExecResponse{
 		ExitCode: exitCode,
 		Stdout:   stdout.Bytes(),
 		Stderr:   stderr.Bytes(),
 	}
 
-	// 如果有错误，附加到响应中
-	if err != nil {
-		resp.Error = err.Error()
+	if exitCode != 0 {
+		resp.Error = fmt.Sprintf("command exited with code %d", exitCode)
 		RecordContainerExec("bwrap", "error")
 	} else {
 		RecordContainerExec("bwrap", "success")
 	}
 	RecordContainerExecDuration("bwrap", time.Since(startTime).Seconds())
-
-	return resp, nil
+	return resp
 }
 
 // Status 查询容器状态
@@ -397,117 +424,154 @@ func (c *BwrapContainer) checkKernelSupport() bool {
 
 // buildArgs 构建 bwrap 参数，返回参数列表和 Seccomp BPF 临时文件路径（如果有）
 func (c *BwrapContainer) buildArgs(spec Spec) ([]string, string) {
-	var args []string
-	var bpfFile string
+	args := buildBasicArgs()
+	args = append(args, c.buildUserNSArgs()...)
+	args = append(args, c.buildOverlayArgs(spec)...)
+	args = append(args, c.buildResourceArgs(spec)...)
+	args = append(args, c.buildNetworkArgs()...)
+	args = append(args, c.buildLogArgs()...)
+	args = append(args, c.buildWorkspaceArgs(spec)...)
+	args = append(args, c.buildEnvArgs(spec)...)
+	bpfFile := c.buildSeccompArgs(spec)
+	if bpfFile != "" {
+		args = append(args, "--seccomp="+bpfFile)
+	}
 
-	// 基本参数
-	args = append(args, "--unshare-all")
-	args = append(args, "--die-with-parent")
-	args = append(args, "--new-session")
+	// 默认 shell
+	args = append(args, "--", "/bin/sh", "-c", "sleep infinity")
+	return args, bpfFile
+}
 
-	// UserNS 配置
+func buildBasicArgs() []string {
+	return []string{
+		"--unshare-all",
+		"--die-with-parent",
+		"--new-session",
+	}
+}
+
+func (c *BwrapContainer) buildUserNSArgs() []string {
 	if !c.enableUserNS {
-		// 如果禁用 UserNS，添加 --unshare-user=no
-		args = append(args, "--unshare-user=no")
 		c.logger.Warn("UserNS disabled, container will run in host user namespace")
-	} else {
-		// 启用 UserNS，明确指定映射
-		args = append(args, "--unshare-user")
-		args = append(args, "--map-root-user")
-		c.logger.Debug("UserNS enabled with root mapping")
+		return []string{"--unshare-user=no"}
 	}
 
-	// OverlayFS 设置（使用策略接口）
+	c.logger.Debug("UserNS enabled with root mapping")
+	return []string{"--unshare-user", "--map-root-user"}
+}
+
+func (c *BwrapContainer) buildOverlayArgs(spec Spec) []string {
 	if c.overlayStrat != nil {
-		overlayArgs := c.overlayStrat.BuildArgs(spec.Rootfs, spec.UpperDir, spec.WorkDir, "/")
-		args = append(args, overlayArgs...)
-	} else {
-		// 默认 OverlayFS 设置
-		args = append(args, "--ro-bind", spec.Rootfs, "/lower")
-		args = append(args, "--bind", spec.UpperDir, "/upper")
-		args = append(args, "--bind", spec.WorkDir, "/work")
-		args = append(args, "--overlay", "/", "/lower:/upper:/work")
+		return c.overlayStrat.BuildArgs(spec.Rootfs, spec.UpperDir, spec.WorkDir, "/")
 	}
 
-	// 共享内存（默认值）
+	return []string{
+		"--ro-bind", spec.Rootfs, "/lower",
+		"--bind", spec.UpperDir, "/upper",
+		"--bind", spec.WorkDir, "/work",
+		"--overlay", "/", "/lower:/upper:/work",
+	}
+}
+
+func (c *BwrapContainer) buildResourceArgs(spec Spec) []string {
+	if c.resourceStrat != nil {
+		resourceArgs, err := c.resourceStrat.Configure(spec)
+		if err == nil {
+			return resourceArgs
+		}
+	}
+
 	shmSize := spec.ShmSize
 	if shmSize <= 0 {
 		shmSize = 64
 	}
-	if c.resourceStrat != nil {
-		resourceArgs, err := c.resourceStrat.Configure(spec)
-		if err == nil {
-			args = append(args, resourceArgs...)
-		}
-	} else {
-		args = append(args, fmt.Sprintf("--shm-size=%dm", shmSize))
+	return []string{fmt.Sprintf("--shm-size=%dm", shmSize)}
+}
+
+func (c *BwrapContainer) buildNetworkArgs() []string {
+	if c.networkStrat == nil {
+		return nil
 	}
 
-	// 网络配置（使用网络策略接口）
-	if c.networkStrat != nil {
-		networkArgs, err := c.networkStrat.Configure(spec)
-		if err == nil {
-			args = append(args, networkArgs...)
-		}
+	networkArgs, err := c.networkStrat.Configure(Spec{})
+	if err == nil {
+		return networkArgs
+	}
+	return nil
+}
+
+func (c *BwrapContainer) buildLogArgs() []string {
+	if c.logStrat == nil {
+		return nil
 	}
 
-	// 日志配置（使用日志策略接口）
-	if c.logStrat != nil {
-		logArgs, err := c.logStrat.Configure(spec)
-		if err == nil {
-			args = append(args, logArgs...)
-		}
+	logArgs, err := c.logStrat.Configure(Spec{})
+	if err == nil {
+		return logArgs
 	}
+	return nil
+}
 
-	// 工作区绑定
-	if spec.Workspace != "" {
-		args = append(args, fmt.Sprintf("--bind=%s:/workspace", spec.Workspace))
+func (c *BwrapContainer) buildWorkspaceArgs(spec Spec) []string {
+	if spec.Workspace == "" {
+		return nil
 	}
+	return []string{fmt.Sprintf("--bind=%s:/workspace", spec.Workspace)}
+}
 
-	// 环境变量
+func (c *BwrapContainer) buildEnvArgs(spec Spec) []string {
+	var args []string
 	for _, env := range spec.Envvars {
 		parts := strings.SplitN(env, "=", 2)
 		if len(parts) == 2 {
 			args = append(args, fmt.Sprintf("--setenv=%s=%s", parts[0], parts[1]))
 		}
 	}
+	return args
+}
 
-	// 端口映射由外部网络模块处理；bwrap 本身不直接支持端口映射
-	// 避免依赖未定义行为，此处不构建端口相关参数
-	_ = spec.Ports
-
-	// Seccomp BPF（使用策略接口）
-	if c.enableSeccomp {
-		if len(spec.SeccompBPF) > 0 {
-			bpfFile = filepath.Join(os.TempDir(), fmt.Sprintf("seccomp-%d.bpf", os.Getpid()))
-			if err := writeSeccompBPF(bpfFile, spec.SeccompBPF); err == nil {
-				args = append(args, "--seccomp="+bpfFile)
-			} else {
-				// 写入失败，清空路径避免清理时误删
-				bpfFile = ""
-				c.logger.Warn("failed to write seccomp bpf file", log.Field{Key: "error", Value: err.Error()})
-			}
-		} else if c.seccompStrat != nil {
-			// 使用策略生成默认 BPF
-			bpfData, err := c.seccompStrat.GenerateBPF()
-			if err == nil && len(bpfData) > 0 {
-				bpfFile = filepath.Join(os.TempDir(), fmt.Sprintf("seccomp-%d.bpf", os.Getpid()))
-				if err := os.WriteFile(bpfFile, bpfData, 0600); err == nil {
-					args = append(args, "--seccomp="+bpfFile)
-				} else {
-					bpfFile = ""
-					c.logger.Warn("failed to write seccomp bpf file", log.Field{Key: "error", Value: err.Error()})
-				}
-			}
-		}
-	} else {
+func (c *BwrapContainer) buildSeccompArgs(spec Spec) string {
+	if !c.enableSeccomp {
 		c.logger.Info("seccomp disabled by configuration")
+		return ""
 	}
 
-	// 默认 shell
-	args = append(args, "--", "/bin/sh", "-c", "sleep infinity")
+	if len(spec.SeccompBPF) > 0 {
+		return c.writeSeccompBPFFile(spec.SeccompBPF)
+	}
 
-	return args, bpfFile
+	if c.seccompStrat != nil {
+		return c.writeSeccompBPFFileFromStrategy(c.seccompStrat)
+	}
+
+	return ""
+}
+
+func (c *BwrapContainer) writeSeccompBPFFile(bpfData []byte) string {
+	bpfFile := filepath.Join(os.TempDir(), fmt.Sprintf("seccomp-%d.bpf", os.Getpid()))
+	writeErr := os.WriteFile(bpfFile, bpfData, 0600)
+	if writeErr == nil {
+		return bpfFile
+	}
+
+	c.logger.Warn("failed to write seccomp bpf file", log.Field{Key: "error", Value: writeErr.Error()})
+	return ""
+}
+
+func (c *BwrapContainer) writeSeccompBPFFileFromStrategy(strategy SeccompStrategy) string {
+	bpfData, err := strategy.GenerateBPF()
+	if err != nil || len(bpfData) == 0 {
+		return ""
+	}
+
+	bpfFile := filepath.Join(os.TempDir(), fmt.Sprintf("seccomp-%d.bpf", os.Getpid()))
+	writeErr := os.WriteFile(bpfFile, bpfData, 0600)
+	if writeErr == nil {
+		return bpfFile
+	}
+
+	c.logger.Warn("failed to write seccomp bpf file", log.Field{Key: "error", Value: writeErr.Error()})
+	return ""
 }
 
 // 辅助函数

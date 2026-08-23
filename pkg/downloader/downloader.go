@@ -326,7 +326,7 @@ func (d *Downloader) downloadMultiThread(ctx context.Context, file *os.File, tot
 		wg.Add(1)
 		go func(idx int, c Chunk) {
 			defer wg.Done()
-			if err := d.downloadChunk(ctx, file, c, totalSize); err != nil {
+			if err := d.downloadChunk(ctx, file, c); err != nil {
 				errCh <- fmt.Errorf("chunk %d: %w", idx, err)
 				return
 			}
@@ -358,71 +358,89 @@ type Chunk struct {
 }
 
 // downloadChunk 下载单个分块
-func (d *Downloader) downloadChunk(ctx context.Context, file *os.File, chunk Chunk, totalSize int64) error {
+func (d *Downloader) downloadChunk(ctx context.Context, file *os.File, chunk Chunk) error {
 	var lastErr error
 	for attempt := 0; attempt < d.config.MaxRetries; attempt++ {
 		if attempt > 0 {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-time.After(d.config.RetryDelay):
+			if err := waitRetry(ctx, d.config.RetryDelay); err != nil {
+				return err
 			}
 		}
 
-		req, err := http.NewRequestWithContext(ctx, "GET", d.config.URL, nil)
-		if err != nil {
-			return err
-		}
-		req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", chunk.Start, chunk.End))
-
-		client := &http.Client{Timeout: d.config.Timeout}
-		resp, err := client.Do(req)
+		resp, err := d.doChunkRequest(ctx, chunk)
 		if err != nil {
 			lastErr = err
 			continue
 		}
 
-		if resp.StatusCode != http.StatusPartialContent && resp.StatusCode != http.StatusOK {
-			_ = resp.Body.Close()
-			lastErr = fmt.Errorf("HTTP %d", resp.StatusCode)
+		writeErr := d.writeChunkResponse(ctx, file, resp, chunk)
+		_ = resp.Body.Close()
+		if writeErr != nil {
+			lastErr = writeErr
 			continue
 		}
 
-		buf := make([]byte, 32*1024)
-		offset := chunk.Start
-		for {
-			select {
-			case <-ctx.Done():
-				_ = resp.Body.Close()
-				return ctx.Err()
-			default:
-			}
-
-			n, err := resp.Body.Read(buf)
-			if n > 0 {
-				if _, werr := file.WriteAt(buf[:n], offset); werr != nil {
-					_ = resp.Body.Close()
-					return werr
-				}
-				offset += int64(n)
-			}
-			if err == io.EOF {
-				break
-			}
-			if err != nil {
-				lastErr = err
-				break
-			}
-		}
-		_ = resp.Body.Close()
-
-		if offset > chunk.End {
-			lastErr = nil
-			break
-		}
+		lastErr = nil
+		break
 	}
 
 	return lastErr
+}
+
+func waitRetry(ctx context.Context, delay time.Duration) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(delay):
+	}
+	return nil
+}
+
+func (d *Downloader) doChunkRequest(ctx context.Context, chunk Chunk) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", d.config.URL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", chunk.Start, chunk.End))
+
+	client := &http.Client{Timeout: d.config.Timeout}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusPartialContent && resp.StatusCode != http.StatusOK {
+		_ = resp.Body.Close()
+		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+	return resp, nil
+}
+
+func (d *Downloader) writeChunkResponse(ctx context.Context, file *os.File, resp *http.Response, chunk Chunk) error {
+	buf := make([]byte, 32*1024)
+	offset := chunk.Start
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		n, err := resp.Body.Read(buf)
+		if n > 0 {
+			if _, werr := file.WriteAt(buf[:n], offset); werr != nil {
+				return werr
+			}
+			offset += int64(n)
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // DownloadFile 便捷函数：下载文件到指定路径

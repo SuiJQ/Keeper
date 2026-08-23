@@ -30,7 +30,22 @@ const (
 )
 
 var (
-	globalLogger = log.New(os.Stdout)
+	globalLogger    = log.New(os.Stdout)
+	commandHandlers = map[string]func(*config.Config, []string) error{
+		"create":   createAgent,
+		"start":    startAgent,
+		"stop":     stopAgent,
+		"run":      runAgentCommand,
+		"status":   statusAgent,
+		"list":     listAgents,
+		"inspect":  inspectAgent,
+		"fork":     forkAgent,
+		"cp":       copyFile,
+		"destroy":  destroyAgent,
+		"recover":  recoverAgent,
+		"snapshot": snapshotAgent,
+		"rollback": rollbackAgent,
+	}
 )
 
 func main() {
@@ -41,54 +56,50 @@ func main() {
 }
 
 func run() error {
-	// 解析命令行参数
+	command, args, err := parseCLI()
+	if err != nil {
+		return err
+	}
+
+	cfg, err := loadConfigForCLI()
+	if err != nil {
+		return err
+	}
+
+	return routeCommand(cfg, command, args)
+}
+
+func parseCLI() (string, []string, error) {
 	if len(os.Args) < 2 {
 		printUsage()
-		return nil
+		return "", nil, nil
 	}
 
 	command := os.Args[1]
 	args := os.Args[2:]
+	if command == "" {
+		return "", nil, fmt.Errorf("missing command")
+	}
+	return command, args, nil
+}
 
-	// 加载配置
+func loadConfigForCLI() (*config.Config, error) {
 	home := getHomeDir()
 	cfg, err := config.Load(home)
 	if err != nil {
-		return fmt.Errorf("load config: %w", err)
+		return nil, fmt.Errorf("load config: %w", err)
 	}
-
-	// 初始化日志
 	logger := globalLogger.WithFields(log.Field{Key: "home", Value: home})
 	log.SetGlobal(logger)
+	return cfg, nil
+}
 
-	// 路由命令
+func routeCommand(cfg *config.Config, command string, args []string) error {
+	if handler, ok := commandHandlers[command]; ok {
+		return handler(cfg, args)
+	}
+
 	switch command {
-	case "create":
-		return createAgent(cfg, args)
-	case "start":
-		return startAgent(cfg, args)
-	case "stop":
-		return stopAgent(cfg, args)
-	case "run":
-		return runAgentCommand(cfg, args)
-	case "status":
-		return statusAgent(cfg, args)
-	case "list":
-		return listAgents(cfg, args)
-	case "inspect":
-		return inspectAgent(cfg, args)
-	case "fork":
-		return forkAgent(cfg, args)
-	case "cp":
-		return copyFile(cfg, args)
-	case "destroy":
-		return destroyAgent(cfg, args)
-	case "recover":
-		return recoverAgent(cfg, args)
-	case "snapshot":
-		return snapshotAgent(cfg, args)
-	case "rollback":
-		return rollbackAgent(cfg, args)
 	case "metrics":
 		fmt.Println(metrics.PrometheusFormat())
 		return nil
@@ -98,9 +109,9 @@ func run() error {
 	case "help":
 		printUsage()
 		return nil
-	default:
-		return fmt.Errorf("unknown command: %s (try 'help')", command)
 	}
+
+	return fmt.Errorf("unknown command: %s (try 'help')", command)
 }
 
 func createAgent(cfg *config.Config, args []string) error {
@@ -288,7 +299,6 @@ func stopAgent(cfg *config.Config, args []string) error {
 	return nil
 }
 
-// runAgentCommand 运行 Agent（前台模式，启动容器 + MCP + Watchdog）
 func runAgentCommand(cfg *config.Config, args []string) error {
 	if len(args) < 1 {
 		return fmt.Errorf("usage: keeper run <name>")
@@ -303,66 +313,95 @@ func runAgentCommand(cfg *config.Config, args []string) error {
 		return fmt.Errorf("create store: %w", err)
 	}
 
-	// 加载 agent 元数据
-	meta, err := store.GetAgent(context.Background(), name)
+	meta, err := ensureRunningAgent(cfg, store, name)
 	if err != nil {
-		return fmt.Errorf("load agent: %w", err)
+		return err
 	}
 
-	// 如果 Agent 不存在，自动创建
-	if meta == nil {
-		logger.Info("agent does not exist, creating")
-		if err := createAgent(cfg, []string{name}); err != nil {
-			return fmt.Errorf("create agent: %w", err)
-		}
-		meta, err = store.GetAgent(context.Background(), name)
-		if err != nil {
-			return fmt.Errorf("load agent after create: %w", err)
-		}
+	runCtx, err := buildRunContext(cfg, name, logger)
+	if err != nil {
+		return err
+	}
+	defer runCtx.Close()
+
+	registerReloadHandler(cfg, runCtx.MCP, runCtx.Watchdog, runCtx.Container, logger)
+
+	if err := runCtx.Start(context.Background()); err != nil {
+		return err
 	}
 
-	// 如果 Agent 已停止，先启动
-	if meta.State == stateStopped {
-		logger.Info("agent is stopped, starting")
-		if err := startAgent(cfg, []string{name}); err != nil {
-			return fmt.Errorf("start agent: %w", err)
-		}
-		meta, err = store.GetAgent(context.Background(), name)
-		if err != nil {
-			return fmt.Errorf("load agent after start: %w", err)
-		}
+	metrics.RegisterCounter("keeper_agent_starts_total", "Total number of agent starts", []string{"agent_name", "state"}).Inc(name, "created")
+	logger.Info("agent running (MCP + Watchdog + Metrics active)")
+	fmt.Printf("Agent '%s' is running (pid: %d)\n", name, meta.PID)
+	fmt.Println("Press Ctrl+C to stop")
+
+	waitForAgentShutdown(cfg, logger, runCtx.MCP, name)
+	return nil
+}
+
+type agentRunContext struct {
+	Container container.Container
+	MCP       *mcp.Server
+	Watchdog  *watchdog.Watchdog
+}
+
+func (r *agentRunContext) Close() {
+	if r == nil {
+		return
+	}
+	_ = r.Container.Close()
+}
+
+func (r *agentRunContext) Start(ctx context.Context) error {
+	if err := r.MCP.Start(ctx); err != nil {
+		return fmt.Errorf("start mcp server: %w", err)
+	}
+	if err := r.Watchdog.Start(ctx); err != nil {
+		return fmt.Errorf("start watchdog: %w", err)
+	}
+	return startAgentMetrics(nil, r.MCP, r.Watchdog)
+}
+
+func buildRunContext(cfg *config.Config, name string, logger log.Logger) (*agentRunContext, error) {
+	c, err := createAgentContainer(name)
+	if err != nil {
+		return nil, err
 	}
 
-	// 如果 Agent 已在运行，直接进入监控模式
-	if meta.State == stateRunning {
-		logger.Info("agent is already running, entering monitor mode")
-	} else {
-		return fmt.Errorf("cannot run agent in state: %s", meta.State)
+	if bc, ok := c.(*container.BwrapContainer); ok {
+		applyContainerStrategies(bc, cfg, logger)
 	}
 
-	// 创建容器运行时
+	mcpServer, err := createAgentMCPServer(cfg, name, logger)
+	if err != nil {
+		_ = c.Close()
+		return nil, err
+	}
+
+	wd, err := createAgentWatchdog(cfg, logger)
+	if err != nil {
+		_ = mcpServer.Stop()
+		_ = c.Close()
+		return nil, err
+	}
+
+	return &agentRunContext{
+		Container: c,
+		MCP:       mcpServer,
+		Watchdog:  wd,
+	}, nil
+}
+
+func createAgentContainer(name string) (container.Container, error) {
 	factory := container.NewBwrapFactory()
 	c, err := factory.Create(name)
 	if err != nil {
-		return fmt.Errorf("create container: %w", err)
+		return nil, fmt.Errorf("create container: %w", err)
 	}
-	defer func() { _ = c.Close() }()
+	return c, nil
+}
 
-	// 根据配置设置策略
-	if bc, ok := c.(*container.BwrapContainer); ok {
-		if seccompStrat, err := container.NewSeccompStrategy(cfg.SeccompStrategy, logger); err != nil {
-			logger.Warn("invalid seccomp strategy, using default", log.Field{Key: "error", Value: err.Error()})
-		} else {
-			bc.SetSeccompStrategy(seccompStrat)
-		}
-		if overlayStrat, err := container.NewOverlayStrategy(cfg.OverlayStrategy, logger); err != nil {
-			logger.Warn("invalid overlay strategy, using default", log.Field{Key: "error", Value: err.Error()})
-		} else {
-			bc.SetOverlayStrategy(overlayStrat)
-		}
-	}
-
-	// 启动 MCP Server（使用配置中的授权设置）
+func createAgentMCPServer(cfg *config.Config, name string, logger log.Logger) (*mcp.Server, error) {
 	mcpServer, err := mcp.NewServer(mcp.ServerConfig{
 		SocketPath:  filepath.Join(cfg.Home, "agents", name, "mcp.sock"),
 		AgentName:   name,
@@ -370,72 +409,67 @@ func runAgentCommand(cfg *config.Config, args []string) error {
 		AllowedGIDs: cfg.MCPAllowedGIDs,
 	}, logger)
 	if err != nil {
-		return fmt.Errorf("create mcp server: %w", err)
+		return nil, fmt.Errorf("create mcp server: %w", err)
 	}
+	return mcpServer, nil
+}
 
-	// 启动看门狗（使用配置中的超时设置）
+func createAgentWatchdog(cfg *config.Config, logger log.Logger) (*watchdog.Watchdog, error) {
 	watchdogTimeout, err := cfg.WatchdogTimeoutDuration()
 	if err != nil {
-		return fmt.Errorf("parse watchdog timeout: %w", err)
+		return nil, fmt.Errorf("parse watchdog timeout: %w", err)
 	}
 	watchdogInterval, err := cfg.WatchdogCheckIntervalDuration()
 	if err != nil {
-		return fmt.Errorf("parse watchdog check interval: %w", err)
+		return nil, fmt.Errorf("parse watchdog check interval: %w", err)
 	}
-
-	wd := watchdog.NewWatchdog(watchdog.Config{
+	return watchdog.NewWatchdog(watchdog.Config{
 		Timeout:       watchdogTimeout,
 		CheckInterval: watchdogInterval,
-	}, logger)
+	}, logger), nil
+}
 
-	// 注册配置热加载回调
+func applyContainerStrategies(bc *container.BwrapContainer, cfg *config.Config, logger log.Logger) {
+	if seccompStrat, err := container.NewSeccompStrategy(cfg.SeccompStrategy, logger); err != nil {
+		logger.Warn("invalid seccomp strategy, using default", log.Field{Key: "error", Value: err.Error()})
+	} else {
+		bc.SetSeccompStrategy(seccompStrat)
+	}
+	if overlayStrat, err := container.NewOverlayStrategy(cfg.OverlayStrategy, logger); err != nil {
+		logger.Warn("invalid overlay strategy, using default", log.Field{Key: "error", Value: err.Error()})
+	} else {
+		bc.SetOverlayStrategy(overlayStrat)
+	}
+	if networkStrat, err := container.NewNetworkStrategy("default", logger); err != nil {
+		logger.Warn("invalid network strategy, using default", log.Field{Key: "error", Value: err.Error()})
+	} else {
+		bc.SetNetworkStrategy(networkStrat)
+	}
+	if resourceStrat, err := container.NewResourceStrategy("default", logger); err != nil {
+		logger.Warn("invalid resource strategy, using default", log.Field{Key: "error", Value: err.Error()})
+	} else {
+		bc.SetResourceStrategy(resourceStrat)
+	}
+	if logStrat, err := container.NewLogStrategy("default", logger); err != nil {
+		logger.Warn("invalid log strategy, using default", log.Field{Key: "error", Value: err.Error()})
+	} else {
+		bc.SetLogStrategy(logStrat)
+	}
+}
+
+func registerReloadHandler(cfg *config.Config, mcpServer *mcp.Server, wd *watchdog.Watchdog, c container.Container, logger log.Logger) {
 	cfg.OnReload(func(newCfg *config.Config) {
-		// 注意：日志级别不支持热加载，需要重启进程生效
-		// logger.SetLevel(newCfg.LogLevel)
-
-		// 更新 MCP Server 授权配置
 		mcpServer.UpdateAllowedUIDs(newCfg.MCPAllowedUIDs)
 		mcpServer.UpdateAllowedGIDs(newCfg.MCPAllowedGIDs)
-
-		// 更新看门狗超时配置
-		newTimeout, err := newCfg.WatchdogTimeoutDuration()
-		if err == nil {
+		if newTimeout, err := newCfg.WatchdogTimeoutDuration(); err == nil {
 			wd.UpdateTimeout(newTimeout)
 		}
-		newInterval, err := newCfg.WatchdogCheckIntervalDuration()
-		if err == nil {
+		if newInterval, err := newCfg.WatchdogCheckIntervalDuration(); err == nil {
 			wd.UpdateCheckInterval(newInterval)
 		}
-
-		// 更新容器策略配置
 		if bc, ok := c.(*container.BwrapContainer); ok {
-			if seccompStrat, err := container.NewSeccompStrategy(newCfg.SeccompStrategy, logger); err != nil {
-				logger.Warn("invalid seccomp strategy, using default", log.Field{Key: "error", Value: err.Error()})
-			} else {
-				bc.SetSeccompStrategy(seccompStrat)
-			}
-			if overlayStrat, err := container.NewOverlayStrategy(newCfg.OverlayStrategy, logger); err != nil {
-				logger.Warn("invalid overlay strategy, using default", log.Field{Key: "error", Value: err.Error()})
-			} else {
-				bc.SetOverlayStrategy(overlayStrat)
-			}
-			if networkStrat, err := container.NewNetworkStrategy("default", logger); err != nil {
-				logger.Warn("invalid network strategy, using default", log.Field{Key: "error", Value: err.Error()})
-			} else {
-				bc.SetNetworkStrategy(networkStrat)
-			}
-			if resourceStrat, err := container.NewResourceStrategy("default", logger); err != nil {
-				logger.Warn("invalid resource strategy, using default", log.Field{Key: "error", Value: err.Error()})
-			} else {
-				bc.SetResourceStrategy(resourceStrat)
-			}
-			if logStrat, err := container.NewLogStrategy("default", logger); err != nil {
-				logger.Warn("invalid log strategy, using default", log.Field{Key: "error", Value: err.Error()})
-			} else {
-				bc.SetLogStrategy(logStrat)
-			}
+			applyContainerStrategies(bc, newCfg, logger)
 		}
-
 		logger.Info("configuration reloaded",
 			log.Field{Key: "log_level", Value: newCfg.LogLevel},
 			log.Field{Key: "shm_size_mb", Value: newCfg.DefaultShmSizeMB},
@@ -444,66 +478,41 @@ func runAgentCommand(cfg *config.Config, args []string) error {
 			log.Field{Key: "overlay_strategy", Value: newCfg.OverlayStrategy},
 			log.Field{Key: "snapshot_compression_level", Value: newCfg.SnapshotCompressionLevel})
 	})
+}
 
-	// 注册 Agent 到看门狗
-	wd.RegisterAgent(name, meta.PID)
-
-	// 启动服务
-	ctx := context.Background()
-	if err := mcpServer.Start(ctx); err != nil {
-		return fmt.Errorf("start mcp server: %w", err)
-	}
-	defer func() { _ = mcpServer.Stop() }()
-
-	if err := wd.Start(ctx); err != nil {
-		return fmt.Errorf("start watchdog: %w", err)
-	}
-	defer wd.Stop()
-
-	// 启动指标服务器
+func startAgentMetrics(cfg *config.Config, mcpServer *mcp.Server, wd *watchdog.Watchdog) error {
 	metricsListenAddr := cfg.MetricsListenAddr
-	if !cfg.MetricsEnabled {
-		metricsListenAddr = "" // 禁用
+	if !cfg.MetricsEnabled || metricsListenAddr == "" {
+		return nil
 	}
-	if metricsListenAddr != "" {
-		metricsServer := metrics.NewHTTPServer(metricsListenAddr)
-		metricsServer.SetHealthCheck(func() error {
-			// 检查 MCP Server 是否运行
-			if !mcpServer.IsRunning() {
-				return fmt.Errorf("mcp server not running")
-			}
-			return nil
-		})
-		metricsServer.SetReadyCheck(func() error {
-			// 检查看门狗是否运行
-			if !wd.IsRunning() {
-				return fmt.Errorf("watchdog not running")
-			}
-			return nil
-		})
-		if err := metricsServer.Start(); err != nil {
-			return fmt.Errorf("start metrics server: %w", err)
+	metricsServer := metrics.NewHTTPServer(metricsListenAddr)
+	metricsServer.SetHealthCheck(func() error {
+		if !mcpServer.IsRunning() {
+			return fmt.Errorf("mcp server not running")
 		}
-		defer func() {
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			_ = metricsServer.Stop(shutdownCtx)
-		}()
+		return nil
+	})
+	metricsServer.SetReadyCheck(func() error {
+		if !wd.IsRunning() {
+			return fmt.Errorf("watchdog not running")
+		}
+		return nil
+	})
+	if err := metricsServer.Start(); err != nil {
+		return fmt.Errorf("start metrics server: %w", err)
 	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = metricsServer.Stop(shutdownCtx)
+	}()
+	return nil
+}
 
-	// 记录 agent 启动指标
-	agentStartCounter := metrics.RegisterCounter("keeper_agent_starts_total", "Total number of agent starts", []string{"agent_name", "state"})
-	agentStartCounter.Inc(name, "created")
-
-	logger.Info("agent running (MCP + Watchdog + Metrics active)")
-	fmt.Printf("Agent '%s' is running (pid: %d)\n", name, meta.PID)
-	fmt.Println("Press Ctrl+C to stop")
-
-	// 等待信号
+func waitForAgentShutdown(cfg *config.Config, logger log.Logger, mcpServer *mcp.Server, name string) {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
-	// 启动配置热加载 goroutine
 	reloadDone := make(chan struct{})
 	go func() {
 		defer close(reloadDone)
@@ -522,29 +531,48 @@ func runAgentCommand(cfg *config.Config, args []string) error {
 	}()
 
 	<-sigCh
-
 	logger.Info("received stop signal, shutting down")
 	fmt.Println("\nShutting down...")
-
-	// 等待热加载 goroutine 结束
 	<-reloadDone
 
-	// 停止看门狗
-	wd.Stop()
-
-	// 停止 MCP Server
 	if err := mcpServer.Stop(); err != nil {
 		logger.Warn("stop mcp server error", log.Field{Key: "error", Value: err})
 	}
-
-	// 停止容器
 	if err := stopAgent(cfg, []string{name}); err != nil {
 		logger.Warn("stop agent error", log.Field{Key: "error", Value: err})
 	}
 
 	logger.Info("agent stopped")
 	fmt.Printf("Agent '%s' stopped\n", name)
-	return nil
+}
+
+func ensureRunningAgent(cfg *config.Config, store storage.Store, name string) (*storage.AgentMeta, error) {
+	meta, err := store.GetAgent(context.Background(), name)
+	if err != nil {
+		return nil, fmt.Errorf("load agent: %w", err)
+	}
+	if meta == nil {
+		if err := createAgent(cfg, []string{name}); err != nil {
+			return nil, fmt.Errorf("create agent: %w", err)
+		}
+		meta, err = store.GetAgent(context.Background(), name)
+		if err != nil {
+			return nil, fmt.Errorf("load agent after create: %w", err)
+		}
+	}
+	if meta.State == stateStopped {
+		if err := startAgent(cfg, []string{name}); err != nil {
+			return nil, fmt.Errorf("start agent: %w", err)
+		}
+		meta, err = store.GetAgent(context.Background(), name)
+		if err != nil {
+			return nil, fmt.Errorf("load agent after start: %w", err)
+		}
+	}
+	if meta.State != stateRunning {
+		return nil, fmt.Errorf("cannot run agent in state: %s", meta.State)
+	}
+	return meta, nil
 }
 
 func statusAgent(cfg *config.Config, args []string) error {
@@ -782,12 +810,7 @@ func inspectAgent(cfg *config.Config, args []string) error {
 	}
 
 	name := args[0]
-	verbose := false
-	for _, arg := range args[1:] {
-		if arg == "--verbose" {
-			verbose = true
-		}
-	}
+	verbose := hasVerboseFlag(args[1:])
 
 	logger := globalLogger.WithFields(log.Field{Key: "agent_name", Value: name})
 	logger.Info("inspecting agent")
@@ -802,7 +825,24 @@ func inspectAgent(cfg *config.Config, args []string) error {
 		return fmt.Errorf("agent '%s' not found: %w", name, err)
 	}
 
-	// 基本信息
+	printAgentSummary(meta)
+	if verbose {
+		printAgentDeviceInfo(meta)
+	}
+
+	return nil
+}
+
+func hasVerboseFlag(args []string) bool {
+	for _, arg := range args {
+		if arg == "--verbose" {
+			return true
+		}
+	}
+	return false
+}
+
+func printAgentSummary(meta *storage.AgentMeta) {
 	fmt.Printf("NAME:       %s\n", meta.Name)
 	fmt.Printf("STATE:      %s\n", meta.State)
 	fmt.Printf("CREATED:    %s\n", meta.CreatedAt)
@@ -812,16 +852,13 @@ func inspectAgent(cfg *config.Config, args []string) error {
 	if meta.PGID != "" {
 		fmt.Printf("PGID:       %s\n", meta.PGID)
 	}
-
 	if meta.CacheKey != "" {
 		fmt.Printf("CACHE_KEY:  %s\n", meta.CacheKey)
 	}
-
 	if meta.CacheURL != "" {
 		fmt.Printf("CACHE_URL:  %s\n", meta.CacheURL)
 	}
 
-	// 端口
 	if len(meta.Ports) > 0 {
 		fmt.Println("PORTS:")
 		for _, p := range meta.Ports {
@@ -829,36 +866,36 @@ func inspectAgent(cfg *config.Config, args []string) error {
 		}
 	}
 
-	// 路径
 	fmt.Println("PATHS:")
-	fmt.Printf("  ROOTFS:  %s\n", meta.RootfsDir)
-	fmt.Printf("  UPPER:   %s\n", meta.UpperDir)
-	fmt.Printf("  WORK:    %s\n", meta.WorkDir)
+	fmt.Printf("  ROOTFS:    %s\n", meta.RootfsDir)
+	fmt.Printf("  UPPER:     %s\n", meta.UpperDir)
+	fmt.Printf("  WORK:      %s\n", meta.WorkDir)
 	fmt.Printf("  WORKSPACE: %s\n", meta.Workspace)
-	fmt.Printf("  BACKUPS: %s\n", meta.BackupsDir)
-	fmt.Printf("  LOGS:    %s\n", meta.LogsDir)
+	fmt.Printf("  BACKUPS:   %s\n", meta.BackupsDir)
+	fmt.Printf("  LOGS:      %s\n", meta.LogsDir)
+}
 
-	// 详细设备信息
-	if verbose {
-		fmt.Println("\nDEVICE INFO:")
-		rootfsDev := statDevice(meta.RootfsDir)
-		upperDev := statDevice(meta.UpperDir)
-		workDev := statDevice(meta.WorkDir)
-		workspaceDev := statDevice(meta.Workspace)
+func printAgentDeviceInfo(meta *storage.AgentMeta) {
+	fmt.Println("\nDEVICE INFO:")
+	rootfsDev := statDevice(meta.RootfsDir)
+	upperDev := statDevice(meta.UpperDir)
+	workDev := statDevice(meta.WorkDir)
+	workspaceDev := statDevice(meta.Workspace)
 
-		fmt.Printf("  Rootfs Device ID:  0x%x\n", rootfsDev)
-		fmt.Printf("  Upper Device ID:   0x%x (Same as rootfs: %v)\n", upperDev, rootfsDev == upperDev)
-		fmt.Printf("  Work Device ID:    0x%x (Same as rootfs: %v)\n", workDev, rootfsDev == workDev)
-		fmt.Printf("  Workspace Device ID: 0x%x (Same as rootfs: %v)\n", workspaceDev, rootfsDev == workspaceDev)
+	fmt.Printf("  Rootfs Device ID:   0x%x\n", rootfsDev)
+	fmt.Printf("  Upper Device ID:    0x%x (Same as rootfs: %v)\n", upperDev, rootfsDev == upperDev)
+	fmt.Printf("  Work Device ID:     0x%x (Same as rootfs: %v)\n", workDev, rootfsDev == workDev)
+	fmt.Printf("  Workspace Device ID: 0x%x (Same as rootfs: %v)\n", workspaceDev, rootfsDev == workspaceDev)
 
-		// 检查端口文件
-		portsPath := filepath.Join(filepath.Dir(meta.RootfsDir), "ports.json")
-		if data, err := os.ReadFile(portsPath); err == nil {
-			fmt.Printf("\nPORTS_JSON: %s\n", string(data))
-		}
+	portsPath := safeJoin(filepath.Dir(meta.RootfsDir), "ports.json")
+	data, err := os.ReadFile(portsPath) // #nosec G304
+	if err == nil {
+		fmt.Printf("\nPORTS_JSON: %s\n", string(data))
 	}
+}
 
-	return nil
+func safeJoin(dir, name string) string {
+	return filepath.Join(dir, filepath.Base(name))
 }
 
 func statDevice(path string) uint64 {
@@ -911,10 +948,22 @@ func copyFile(cfg *config.Config, args []string) error {
 		return fmt.Errorf("usage: keeper cp [-r] <source> <destination>")
 	}
 
+	recursive, src, dst, err := parseCopyArgs(args)
+	if err != nil {
+		return err
+	}
+
+	store, err := storage.NewStore(cfg.Home)
+	if err != nil {
+		return fmt.Errorf("create store: %w", err)
+	}
+
+	return copyBetweenPaths(store, src, dst, recursive)
+}
+
+func parseCopyArgs(args []string) (bool, string, string, error) {
 	recursive := false
 	var src, dst string
-
-	// 解析参数
 	for _, arg := range args {
 		switch arg {
 		case "-r", "--recursive":
@@ -927,17 +976,13 @@ func copyFile(cfg *config.Config, args []string) error {
 			}
 		}
 	}
-
 	if src == "" || dst == "" {
-		return fmt.Errorf("usage: keeper cp [-r] <source> <destination>")
+		return false, "", "", fmt.Errorf("usage: keeper cp [-r] <source> <destination>")
 	}
+	return recursive, src, dst, nil
+}
 
-	store, err := storage.NewStore(cfg.Home)
-	if err != nil {
-		return fmt.Errorf("create store: %w", err)
-	}
-
-	// 解析源和目标
+func copyBetweenPaths(store storage.Store, src, dst string, recursive bool) error {
 	srcAgent, srcPath, srcIsAgent := parseAgentPath(src)
 	dstAgent, dstPath, dstIsAgent := parseAgentPath(dst)
 
@@ -945,28 +990,23 @@ func copyFile(cfg *config.Config, args []string) error {
 	case srcIsAgent && dstIsAgent:
 		return fmt.Errorf("cannot copy between two agents directly, use local path as intermediate")
 	case srcIsAgent:
-		// 从 agent workspace 下载到本地
 		meta, err := store.GetAgent(context.Background(), srcAgent)
 		if err != nil {
 			return fmt.Errorf("source agent '%s' not found: %w", srcAgent, err)
 		}
-		cleanSrc := strings.TrimPrefix(srcPath, "/")
-		srcFull := filepath.Join(meta.Workspace, cleanSrc)
+		srcFull := filepath.Join(meta.Workspace, strings.TrimPrefix(srcPath, "/"))
 		return copyLocalToLocal(srcFull, dst)
 	case dstIsAgent:
-		// 从本地上传到 agent workspace
 		meta, err := store.GetAgent(context.Background(), dstAgent)
 		if err != nil {
 			return fmt.Errorf("destination agent '%s' not found: %w", dstAgent, err)
 		}
-		cleanDst := strings.TrimPrefix(dstPath, "/")
-		dstFull := filepath.Join(meta.Workspace, cleanDst)
+		dstFull := filepath.Join(meta.Workspace, strings.TrimPrefix(dstPath, "/"))
 		if recursive {
 			return copyDirRecursive(src, dstFull)
 		}
 		return copyLocalToLocal(src, dstFull)
 	default:
-		// 本地到本地
 		if recursive {
 			return copyDirRecursive(src, dst)
 		}
@@ -1010,47 +1050,20 @@ func parseAgentPath(s string) (string, string, bool) {
 }
 
 func copyLocalToLocal(src, dst string) error {
-	// 检查源是否存在
 	srcInfo, err := os.Stat(src)
 	if err != nil {
 		return fmt.Errorf("source not found: %w", err)
 	}
 
-	// 确保目标目录存在
-	dstDir := filepath.Dir(dst)
-	if err := os.MkdirAll(dstDir, 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dst), 0750); err != nil {
 		return fmt.Errorf("create destination dir: %w", err)
 	}
 
 	if srcInfo.IsDir() {
-		// 目录复制
 		return copyDirRecursive(src, dst)
 	}
 
-	// 文件复制
-	srcFile, err := os.Open(src)
-	if err != nil {
-		return fmt.Errorf("open source: %w", err)
-	}
-	defer func() { _ = srcFile.Close() }()
-
-	dstFile, err := os.Create(dst)
-	if err != nil {
-		return fmt.Errorf("create destination: %w", err)
-	}
-	defer func() { _ = dstFile.Close() }()
-
-	if _, err := io.Copy(dstFile, srcFile); err != nil {
-		return fmt.Errorf("copy data: %w", err)
-	}
-
-	// 保留权限
-	srcMode := srcInfo.Mode()
-	if err := os.Chmod(dst, srcMode); err != nil {
-		return fmt.Errorf("set permissions: %w", err)
-	}
-
-	return nil
+	return copyFileToPath(src, dst, srcInfo.Mode())
 }
 
 func copyDirRecursive(src, dst string) error {
@@ -1070,34 +1083,31 @@ func copyDirRecursive(src, dst string) error {
 			return os.MkdirAll(targetPath, info.Mode())
 		}
 
-		// 文件复制
-		srcFile, err := os.Open(path)
-		if err != nil {
-			return err
-		}
-
-		dstFile, err := os.Create(targetPath)
-		if err != nil {
-			_ = srcFile.Close()
-			return err
-		}
-
-		_, copyErr := io.Copy(dstFile, srcFile)
-		srcFileCloseErr := srcFile.Close()
-		dstFileCloseErr := dstFile.Close()
-
-		if copyErr != nil {
-			return copyErr
-		}
-		if srcFileCloseErr != nil {
-			return srcFileCloseErr
-		}
-		if dstFileCloseErr != nil {
-			return dstFileCloseErr
-		}
-
-		return os.Chmod(targetPath, info.Mode())
+		return copyFileToPath(path, targetPath, info.Mode())
 	})
+}
+
+func copyFileToPath(src, dst string, srcMode os.FileMode) error {
+	srcFile, err := os.Open(src) // #nosec G304
+	if err != nil {
+		return fmt.Errorf("open source: %w", err)
+	}
+	defer func() { _ = srcFile.Close() }()
+
+	if err := os.MkdirAll(filepath.Dir(dst), 0750); err != nil {
+		return fmt.Errorf("create destination dir: %w", err)
+	}
+	dstFile, err := os.Create(dst) // #nosec G304
+	if err != nil {
+		return fmt.Errorf("create destination: %w", err)
+	}
+	defer func() { _ = dstFile.Close() }()
+
+	if _, err := io.Copy(dstFile, srcFile); err != nil {
+		return fmt.Errorf("copy data: %w", err)
+	}
+
+	return os.Chmod(dst, srcMode)
 }
 
 // killProcess 终止进程

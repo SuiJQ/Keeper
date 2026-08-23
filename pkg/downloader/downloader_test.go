@@ -598,7 +598,7 @@ func TestDownloadChunk(t *testing.T) {
 	}, nil)
 
 	ctx := context.Background()
-	err = downloader.downloadChunk(ctx, file, Chunk{Start: 0, End: 49}, 100)
+	err = downloader.downloadChunk(ctx, file, Chunk{Start: 0, End: 49})
 	assert.NoError(t, err)
 
 	data, err := os.ReadFile(tmpFile)
@@ -629,7 +629,7 @@ func TestDownloadChunkHTTPError(t *testing.T) {
 	}, nil)
 
 	ctx := context.Background()
-	err = downloader.downloadChunk(ctx, file, Chunk{Start: 0, End: 49}, 100)
+	err = downloader.downloadChunk(ctx, file, Chunk{Start: 0, End: 49})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "HTTP 404")
 }
@@ -665,7 +665,7 @@ func TestDownloadChunkContextCancel(t *testing.T) {
 	// 立即取消
 	cancel()
 
-	err = downloader.downloadChunk(ctx, file, Chunk{Start: 0, End: 49}, 100)
+	err = downloader.downloadChunk(ctx, file, Chunk{Start: 0, End: 49})
 	assert.Error(t, err)
 	assert.Equal(t, context.Canceled, err)
 }
