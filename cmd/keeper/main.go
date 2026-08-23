@@ -21,9 +21,12 @@ import (
 )
 
 const (
-	appName     = "keeper"
-	version     = "0.1.0-dev"
-	defaultHome = ".local/share/keeper"
+	appName        = "keeper"
+	version        = "0.1.0-dev"
+	defaultHome    = ".local/share/keeper"
+	stateRunning   = "running"
+	stateStopped   = "stopped"
+	stateFatalBwrap = "fatal_bwrap_exec"
 )
 
 var (
@@ -154,14 +157,14 @@ func startAgent(cfg *config.Config, args []string) error {
 	}
 
 	// 检查当前状态
-	if meta.State == "running" {
+	if meta.State == stateRunning {
 		logger.Info("agent already running")
 		fmt.Printf("Agent '%s' is already running\n", name)
 		return nil
 	}
 
 	// 从 created 或 stopped 状态启动
-	if meta.State == "created" || meta.State == "stopped" {
+	if meta.State == "created" || meta.State == stateStopped {
 		// 创建容器运行时
 		factory := container.NewBwrapFactory()
 		c, err := factory.Create(name)
@@ -185,14 +188,14 @@ func startAgent(cfg *config.Config, args []string) error {
 		pid, err := c.Start(context.Background(), spec)
 		if err != nil {
 			// 更新状态为 fatal
-			meta.State = "fatal_bwrap_exec"
+			meta.State = stateFatalBwrap
 			meta.Error = err.Error()
 			_ = store.UpdateAgent(context.Background(), meta)
 			return fmt.Errorf("start container: %w", err)
 		}
 
 		// 更新状态
-		meta.State = "running"
+		meta.State = stateRunning
 		meta.PID = pid
 		meta.PGID = fmt.Sprintf("%d", pid)
 		meta.StartedAt = time.Now().UTC().Format(time.RFC3339)
@@ -232,13 +235,13 @@ func stopAgent(cfg *config.Config, args []string) error {
 	}
 
 	// 检查当前状态
-	if meta.State == "stopped" {
+	if meta.State == stateStopped {
 		logger.Info("agent already stopped")
 		fmt.Printf("Agent '%s' is already stopped\n", name)
 		return nil
 	}
 
-	if meta.State != "running" {
+	if meta.State != stateRunning {
 		return fmt.Errorf("cannot stop agent in state: %s", meta.State)
 	}
 
@@ -271,7 +274,7 @@ func stopAgent(cfg *config.Config, args []string) error {
 	}
 
 	// 更新状态
-	meta.State = "stopped"
+	meta.State = stateStopped
 	meta.StoppedAt = time.Now().UTC().Format(time.RFC3339)
 	meta.PID = 0
 	meta.PGID = ""
@@ -319,7 +322,7 @@ func runAgentCommand(cfg *config.Config, args []string) error {
 	}
 
 	// 如果 Agent 已停止，先启动
-	if meta.State == "stopped" {
+	if meta.State == stateStopped {
 		logger.Info("agent is stopped, starting")
 		if err := startAgent(cfg, []string{name}); err != nil {
 			return fmt.Errorf("start agent: %w", err)
@@ -331,7 +334,7 @@ func runAgentCommand(cfg *config.Config, args []string) error {
 	}
 
 	// 如果 Agent 已在运行，直接进入监控模式
-	if meta.State == "running" {
+	if meta.State == stateRunning {
 		logger.Info("agent is already running, entering monitor mode")
 	} else {
 		return fmt.Errorf("cannot run agent in state: %s", meta.State)
@@ -566,7 +569,7 @@ func statusAgent(cfg *config.Config, args []string) error {
 
 	// 输出状态
 	fmt.Printf("Agent '%s': %s\n", name, meta.State)
-	if meta.State == "running" && meta.PID > 0 {
+	if meta.State == stateRunning && meta.PID > 0 {
 		fmt.Printf("  PID: %d\n", meta.PID)
 		fmt.Printf("  PGID: %s\n", meta.PGID)
 	}
@@ -631,7 +634,7 @@ func recoverAgent(cfg *config.Config, args []string) error {
 	}
 
 	// 重置状态
-	meta.State = "stopped"
+	meta.State = stateStopped
 	meta.PID = 0
 	meta.PGID = ""
 	meta.Error = ""
