@@ -7,7 +7,9 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -297,12 +299,44 @@ func (s *Server) authorize(cred *syscall.Ucred) error {
 	}
 
 	if len(s.allowedGIDs) > 0 {
-		if _, ok := s.allowedGIDs[cred.Gid]; !ok {
+		allowed, err := groupMember(cred.Gid, s.allowedGIDs)
+		if err != nil {
+			return err
+		}
+		if !allowed {
 			return fmt.Errorf("gid %d not allowed", cred.Gid)
 		}
 	}
 
 	return nil
+}
+
+// groupMember 判断 GID 是否在白名单中，或属于白名单中的附属组
+func groupMember(gid uint32, allowedGIDs map[uint32]struct{}) (bool, error) {
+	if _, ok := allowedGIDs[gid]; ok {
+		return true, nil
+	}
+
+	u, err := user.Lookup(fmt.Sprintf("%d", os.Getuid()))
+	if err != nil {
+		return false, nil
+	}
+
+	ids, err := u.GroupIds()
+	if err != nil {
+		return false, nil
+	}
+	for _, id := range ids {
+		g, err := strconv.ParseUint(id, 10, 32)
+		if err != nil {
+			continue
+		}
+		if uint32(g) == gid {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 // handleRequest 处理单个请求
