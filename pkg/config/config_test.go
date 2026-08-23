@@ -10,6 +10,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const (
+	invalidDuration = "invalid"
+	tenSeconds      = "10s"
+)
+
 func waitForFileChange(t *testing.T, path string, oldModTime time.Time) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
@@ -143,7 +148,7 @@ func TestConfigValidate(t *testing.T) {
 				Home:             "/tmp",
 				DefaultShmSizeMB: 64,
 				MaxDownloadBytes: 1024,
-				LogLevel:         "invalid",
+				LogLevel:         invalidDuration,
 			},
 			wantErr: true,
 		},
@@ -164,7 +169,7 @@ func TestConfigValidate(t *testing.T) {
 func TestConfigDurationParsing(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.WatchdogTimeout = "90s"
-	cfg.WatchdogCheckInterval = "10s"
+	cfg.WatchdogCheckInterval = tenSeconds
 	cfg.DownloadTimeout = "15m"
 
 	timeout, err := cfg.WatchdogTimeoutDuration()
@@ -353,7 +358,7 @@ func TestConfigValidateNetworkFields(t *testing.T) {
 	assert.NoError(t, cfg.Validate())
 
 	// 无效值
-	cfg.NetworkForwardConnectTimeout = "invalid"
+	cfg.NetworkForwardConnectTimeout = invalidDuration
 	assert.Error(t, cfg.Validate())
 }
 
@@ -376,7 +381,7 @@ func TestConfigValidateStorageFields(t *testing.T) {
 	assert.NoError(t, cfg.Validate())
 
 	// 无效值
-	cfg.StoragePruneInterval = "invalid"
+	cfg.StoragePruneInterval = invalidDuration
 	assert.Error(t, cfg.Validate())
 
 	cfg.StorageMaxSnapshots = -1
@@ -417,7 +422,7 @@ func TestConfigValidateDownloaderFields(t *testing.T) {
 	cfg.DownloaderChunkSize = 512
 	assert.Error(t, cfg.Validate())
 
-	cfg.DownloaderRetryDelay = "invalid"
+	cfg.DownloaderRetryDelay = invalidDuration
 	assert.Error(t, cfg.Validate())
 }
 
@@ -456,14 +461,14 @@ func TestConfigAllFieldsRoundTrip(t *testing.T) {
 	cfg.DefaultShmSizeMB = 128
 	cfg.DownloadTimeout = "10m"
 	cfg.WatchdogTimeout = "120s"
-	cfg.WatchdogCheckInterval = "10s"
+	cfg.WatchdogCheckInterval = tenSeconds
 	cfg.MCPAllowedUIDs = []uint32{1000, 1001}
 	cfg.MCPAllowedGIDs = []uint32{1000}
 	cfg.SeccompStrategy = "whitelist"
 	cfg.OverlayStrategy = "overlayfs"
 	cfg.SnapshotCompressionLevel = 3
 	cfg.NetworkForwardMaxConnections = 50
-	cfg.NetworkForwardConnectTimeout = "10s"
+	cfg.NetworkForwardConnectTimeout = tenSeconds
 	cfg.DownloaderThreads = 8
 	cfg.DownloaderChunkSize = 2 * 1024 * 1024
 	cfg.DownloaderRetryDelay = "200ms"
@@ -485,14 +490,14 @@ func TestConfigAllFieldsRoundTrip(t *testing.T) {
 	assert.Equal(t, 128, loaded.DefaultShmSizeMB)
 	assert.Equal(t, "10m", loaded.DownloadTimeout)
 	assert.Equal(t, "120s", loaded.WatchdogTimeout)
-	assert.Equal(t, "10s", loaded.WatchdogCheckInterval)
+	assert.Equal(t, tenSeconds, loaded.WatchdogCheckInterval)
 	assert.Equal(t, []uint32{1000, 1001}, loaded.MCPAllowedUIDs)
 	assert.Equal(t, []uint32{1000}, loaded.MCPAllowedGIDs)
 	assert.Equal(t, "whitelist", loaded.SeccompStrategy)
 	assert.Equal(t, "overlayfs", loaded.OverlayStrategy)
 	assert.Equal(t, 3, loaded.SnapshotCompressionLevel)
 	assert.Equal(t, 50, loaded.NetworkForwardMaxConnections)
-	assert.Equal(t, "10s", loaded.NetworkForwardConnectTimeout)
+	assert.Equal(t, tenSeconds, loaded.NetworkForwardConnectTimeout)
 	assert.Equal(t, 8, loaded.DownloaderThreads)
 	assert.Equal(t, int64(2*1024*1024), loaded.DownloaderChunkSize)
 	assert.Equal(t, "200ms", loaded.DownloaderRetryDelay)

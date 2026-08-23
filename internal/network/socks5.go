@@ -8,9 +8,12 @@ import (
 
 // PortForward 端口转发配置
 type PortForward struct {
-	Host      int
+	// Host 宿主机端口
+	Host int
+	// Container 容器端口
 	Container int
-	Protocol  string // tcp / udp
+	// Protocol 协议，支持 tcp / udp
+	Protocol string
 	// MaxConnections 最大并发连接数，0 表示不限制
 	MaxConnections int
 	// ConnectTimeout 连接超时时间
@@ -24,13 +27,17 @@ func (p *PortForward) String() string {
 
 // SOCKS5Proxy SOCKS5 代理配置
 type SOCKS5Proxy struct {
+	// ListenAddr 监听地址
 	ListenAddr string
-	Auth       *ProxyAuth
+	// Auth 认证配置
+	Auth *ProxyAuth
 }
 
 // ProxyAuth 代理认证配置
 type ProxyAuth struct {
+	// Username 用户名
 	Username string
+	// Password 密码
 	Password string
 }
 
@@ -74,6 +81,6 @@ func IsPortInUse(port int) bool {
 	if err != nil {
 		return true
 	}
-	listener.Close()
+	_ = listener.Close()
 	return false
 }

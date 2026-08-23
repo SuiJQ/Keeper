@@ -7,10 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"keeper/internal/storage"
 	"keeper/pkg/config"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestAgentLifecycleEndToEnd 测试 Agent 完整生命周期
@@ -203,7 +204,7 @@ func TestAgentConcurrentOperations(t *testing.T) {
 	// 并发创建
 	done := make(chan bool, agentCount)
 	for i, name := range agentNames {
-		go func(idx int, agentName string) {
+		go func(_ int, agentName string) {
 			err := createAgent(cfg, []string{agentName})
 			assert.NoError(t, err)
 			done <- true
@@ -222,7 +223,7 @@ func TestAgentConcurrentOperations(t *testing.T) {
 
 	// 并发销毁
 	for i, name := range agentNames {
-		go func(idx int, agentName string) {
+		go func(_ int, agentName string) {
 			err := destroyAgent(cfg, []string{agentName})
 			assert.NoError(t, err)
 			done <- true

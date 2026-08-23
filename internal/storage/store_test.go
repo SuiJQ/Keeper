@@ -908,6 +908,7 @@ func TestPruneCacheEmpty(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, deleted)
 }
+
 // TestCopyDirEmptyOnly 测试 copyDir emptyOnly 分支
 func TestCopyDirEmptyOnly(t *testing.T) {
 	tmpDir := t.TempDir()

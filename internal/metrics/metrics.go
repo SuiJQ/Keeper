@@ -3,6 +3,7 @@ package metrics
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -317,63 +318,56 @@ func (r *Registry) PrometheusFormat() string {
 	defer r.mu.RUnlock()
 
 	var output string
-
-	// 导出计数器
 	for name, counter := range r.counters {
-		output += fmt.Sprintf("# HELP %s %s\n", name, counter.help)
-		output += fmt.Sprintf("# TYPE %s counter\n", name)
-		labels := formatLabels(counter.labels, counter.labelNames)
-		output += fmt.Sprintf("%s%s %d\n", name, labels, counter.Get())
-		output += "\n"
+		output += counterFormat(name, counter)
 	}
-
-	// 导出仪表盘
 	for name, gauge := range r.gauges {
-		output += fmt.Sprintf("# HELP %s %s\n", name, gauge.help)
-		output += fmt.Sprintf("# TYPE %s gauge\n", name)
-		labels := formatLabels(gauge.labels, gauge.labelNames)
-		output += fmt.Sprintf("%s%s %f\n", name, labels, gauge.Get())
-		output += "\n"
+		output += gaugeFormat(name, gauge)
 	}
-
-	// 导出直方图
 	for name, histogram := range r.histograms {
-		output += fmt.Sprintf("# HELP %s %s\n", name, histogram.help)
-		output += fmt.Sprintf("# TYPE %s histogram\n", name)
-		for _, bucket := range histogram.buckets {
-			labels := formatLabels(histogram.labels, histogram.labelNames)
-			labels = fmt.Sprintf("%s,le=\"%g\"", labels, bucket)
-			count := histogram.count
-			for _, v := range histogram.values {
-				if v <= bucket {
-					count++
-				}
-			}
-			output += fmt.Sprintf("%s_bucket%s %d\n", name, labels, count)
-		}
-		labels := formatLabels(histogram.labels, histogram.labelNames)
-		output += fmt.Sprintf("%s_sum%s %f\n", name, labels, histogram.sum)
-		output += fmt.Sprintf("%s_count%s %d\n", name, labels, histogram.count)
-		output += "\n"
+		output += histogramFormat(name, histogram)
 	}
-
-	// 导出摘要
 	for name, summary := range r.summaries {
-		output += fmt.Sprintf("# HELP %s %s\n", name, summary.help)
-		output += fmt.Sprintf("# TYPE %s summary\n", name)
-		for quantile := range summary.objectives {
-			labels := formatLabels(summary.labels, summary.labelNames)
-			labels = fmt.Sprintf("%s,quantile=\"%g\"", labels, quantile)
-			value := calculateQuantile(summary.values, quantile)
-			output += fmt.Sprintf("%s%s %f\n", name, labels, value)
-		}
-		labels := formatLabels(summary.labels, summary.labelNames)
-		output += fmt.Sprintf("%s_sum%s %f\n", name, labels, summary.sum)
-		output += fmt.Sprintf("%s_count%s %d\n", name, labels, summary.count)
-		output += "\n"
+		output += summaryFormat(name, summary)
 	}
-
 	return output
+}
+
+func counterFormat(name string, c *Counter) string {
+	labels := formatLabels(c.labels, c.labelNames)
+	return "# HELP " + name + " " + c.help + "\n# TYPE " + name + " counter\n" + name + labels + " " + strconv.FormatInt(c.Get(), 10) + "\n\n"
+}
+
+func gaugeFormat(name string, g *Gauge) string {
+	labels := formatLabels(g.labels, g.labelNames)
+	return "# HELP " + name + " " + g.help + "\n# TYPE " + name + " gauge\n" + name + labels + " " + strconv.FormatFloat(g.Get(), 'f', -1, 64) + "\n\n"
+}
+
+func histogramFormat(name string, h *Histogram) string {
+	labels := formatLabels(h.labels, h.labelNames)
+	var buckets string
+	for _, bucket := range h.buckets {
+		bl := labels + ",le=\"" + strconv.FormatFloat(bucket, 'f', -1, 64) + "\""
+		count := h.count
+		for _, v := range h.values {
+			if v <= bucket {
+				count++
+			}
+		}
+		buckets += name + "_bucket" + bl + " " + strconv.FormatInt(count, 10) + "\n"
+	}
+	return "# HELP " + name + " " + h.help + "\n# TYPE " + name + " histogram\n" + buckets + name + "_sum" + labels + " " + strconv.FormatFloat(h.sum, 'f', -1, 64) + "\n" + name + "_count" + labels + " " + strconv.FormatInt(h.count, 10) + "\n\n"
+}
+
+func summaryFormat(name string, s *Summary) string {
+	labels := formatLabels(s.labels, s.labelNames)
+	var quantiles string
+	for quantile := range s.objectives {
+		ql := labels + ",quantile=\"" + strconv.FormatFloat(quantile, 'f', -1, 64) + "\""
+		value := calculateQuantile(s.values, quantile)
+		quantiles += name + ql + " " + strconv.FormatFloat(value, 'f', -1, 64) + "\n"
+	}
+	return "# HELP " + name + " " + s.help + "\n# TYPE " + name + " summary\n" + quantiles + name + "_sum" + labels + " " + strconv.FormatFloat(s.sum, 'f', -1, 64) + "\n" + name + "_count" + labels + " " + strconv.FormatInt(s.count, 10) + "\n\n"
 }
 
 // formatLabels 格式化标签

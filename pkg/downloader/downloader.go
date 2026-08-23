@@ -108,7 +108,7 @@ func (d *Downloader) Download(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("create output file: %w", err)
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 
 		if err := file.Truncate(totalSize); err != nil {
 			return fmt.Errorf("truncate file: %w", err)
@@ -139,7 +139,7 @@ func (d *Downloader) downloadUnknownSize(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("create output file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	req, err := http.NewRequestWithContext(ctx, "GET", d.config.URL, nil)
 	if err != nil {
@@ -151,7 +151,7 @@ func (d *Downloader) downloadUnknownSize(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, resp.Status)
@@ -196,7 +196,7 @@ func (d *Downloader) getFileInfo(ctx context.Context) (int64, string, bool, erro
 		// HEAD 失败，尝试 GET
 		return d.getFileInfoFromGET(ctx)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.ContentLength < 0 {
 		return 0, "", false, fmt.Errorf("unknown file size")
@@ -221,7 +221,7 @@ func (d *Downloader) getFileInfoFromGET(ctx context.Context) (int64, string, boo
 	if err != nil {
 		return 0, "", false, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// 读取响应头获取总大小
 	totalSize := resp.ContentLength
@@ -259,7 +259,7 @@ func (d *Downloader) downloadSingleThread(ctx context.Context, file *os.File, to
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
 		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, resp.Status)
@@ -383,7 +383,7 @@ func (d *Downloader) downloadChunk(ctx context.Context, file *os.File, chunk Chu
 		}
 
 		if resp.StatusCode != http.StatusPartialContent && resp.StatusCode != http.StatusOK {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			lastErr = fmt.Errorf("HTTP %d", resp.StatusCode)
 			continue
 		}
@@ -393,7 +393,7 @@ func (d *Downloader) downloadChunk(ctx context.Context, file *os.File, chunk Chu
 		for {
 			select {
 			case <-ctx.Done():
-				resp.Body.Close()
+				_ = resp.Body.Close()
 				return ctx.Err()
 			default:
 			}
@@ -401,7 +401,7 @@ func (d *Downloader) downloadChunk(ctx context.Context, file *os.File, chunk Chu
 			n, err := resp.Body.Read(buf)
 			if n > 0 {
 				if _, werr := file.WriteAt(buf[:n], offset); werr != nil {
-					resp.Body.Close()
+					_ = resp.Body.Close()
 					return werr
 				}
 				offset += int64(n)
@@ -414,7 +414,7 @@ func (d *Downloader) downloadChunk(ctx context.Context, file *os.File, chunk Chu
 				break
 			}
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		if offset > chunk.End {
 			lastErr = nil

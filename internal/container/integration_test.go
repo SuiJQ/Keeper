@@ -10,9 +10,10 @@ import (
 	"testing"
 	"time"
 
+	"keeper/internal/network"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"keeper/internal/network"
 )
 
 // TestBwrapFactoryLifecycle 测试 bwrap 容器生命周期（mock 模式）
@@ -104,7 +105,7 @@ func TestMockContainerConcurrent(t *testing.T) {
 	// 并发执行命令
 	done := make(chan struct{}, 10)
 	for i := 0; i < 10; i++ {
-		go func(id int) {
+		go func(_ int) {
 			_, err := c.Exec(context.Background(), ExecRequest{Command: "cmd"})
 			assert.NoError(t, err)
 			done <- struct{}{}

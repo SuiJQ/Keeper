@@ -19,8 +19,8 @@ type BPFProgram struct {
 	Instructions []BPFInstruction
 }
 
-// SeccompFilter Seccomp 过滤器配置
-type SeccompFilter struct {
+// Filter Seccomp 过滤器配置
+type Filter struct {
 	// 允许的系统调用（如果为空，则默认允许所有，除非在 DenyList 中）
 	AllowList []string
 	// 拒绝的系统调用（优先级高于 AllowList）
@@ -355,9 +355,9 @@ var syscallNumbers = map[string]uint32{
 }
 
 // GenerateBPF 生成 Seccomp BPF 程序
-func GenerateBPF(filter *SeccompFilter) ([]byte, error) {
+func GenerateBPF(filter *Filter) ([]byte, error) {
 	if filter == nil {
-		filter = &SeccompFilter{
+		filter = &Filter{
 			DefaultAction: RetAllow,
 		}
 	}
@@ -454,7 +454,7 @@ func generateWhitelistBPF(prog *BPFProgram, allowed map[uint32]bool, denied map[
 		}
 		prog.Instructions = append(prog.Instructions, BPFInstruction{
 			Opcode: BPF_JMP | BPF_JEQ | BPF_K,
-			Jt:     uint8(jumpOffset),
+			Jt:     uint8(jumpOffset), // #nosec G115
 			Jf:     1,
 			K:      num,
 		})
@@ -558,8 +558,8 @@ func (p *BPFProgram) Bytes() []byte {
 }
 
 // NewDefaultFilter 创建默认过滤器
-func NewDefaultFilter() *SeccompFilter {
-	return &SeccompFilter{
+func NewDefaultFilter() *Filter {
+	return &Filter{
 		AllowList: []string{
 			// 基本 I/O
 			"read", "write", "close", "lseek", "mmap", "munmap", "brk",
@@ -611,8 +611,8 @@ func NewDefaultFilter() *SeccompFilter {
 }
 
 // NewWhitelistFilter 创建白名单过滤器（只允许指定系统调用）
-func NewWhitelistFilter() *SeccompFilter {
-	return &SeccompFilter{
+func NewWhitelistFilter() *Filter {
+	return &Filter{
 		AllowList: []string{
 			"read", "write", "close", "mmap", "munmap", "brk",
 			"getpid", "getppid", "getuid", "getgid", "geteuid", "getegid",
@@ -637,8 +637,8 @@ func NewWhitelistFilter() *SeccompFilter {
 }
 
 // NewBlacklistFilter 创建黑名单过滤器（拒绝指定系统调用）
-func NewBlacklistFilter() *SeccompFilter {
-	return &SeccompFilter{
+func NewBlacklistFilter() *Filter {
+	return &Filter{
 		DenyList: []string{
 			"reboot", "mount", "umount", "swapon", "swapoff",
 			"pivot_root", "chroot", "create_module", "delete_module",

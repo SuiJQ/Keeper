@@ -53,29 +53,29 @@ func (s *HTTPServer) Start() error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
-		fmt.Fprint(w, PrometheusFormat())
+		_, _ = fmt.Fprint(w, PrometheusFormat())
 	})
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if s.healthCheck != nil {
 			if err := s.healthCheck(); err != nil {
 				w.WriteHeader(http.StatusServiceUnavailable)
-				fmt.Fprintf(w, `{"status":"unhealthy","error":"%s"}`, err.Error())
+				_, _ = fmt.Fprintf(w, `{"status":"unhealthy","error":"%s"}`, err.Error())
 				return
 			}
 		}
-		fmt.Fprint(w, `{"status":"healthy"}`)
+		_, _ = fmt.Fprint(w, `{"status":"healthy"}`)
 	})
 	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if s.readyCheck != nil {
 			if err := s.readyCheck(); err != nil {
 				w.WriteHeader(http.StatusServiceUnavailable)
-				fmt.Fprintf(w, `{"status":"not ready","error":"%s"}`, err.Error())
+				_, _ = fmt.Fprintf(w, `{"status":"not ready","error":"%s"}`, err.Error())
 				return
 			}
 		}
-		fmt.Fprint(w, `{"status":"ready"}`)
+		_, _ = fmt.Fprint(w, `{"status":"ready"}`)
 	})
 
 	s.server = &http.Server{

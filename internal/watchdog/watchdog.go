@@ -32,14 +32,14 @@ type Watchdog struct {
 	agents        map[string]*AgentInfo
 }
 
-// WatchdogConfig 看门狗配置
-type WatchdogConfig struct {
+// Config 看门狗配置
+type Config struct {
 	Timeout       time.Duration
 	CheckInterval time.Duration
 }
 
 // NewWatchdog 创建看门狗实例
-func NewWatchdog(cfg WatchdogConfig, logger log.Logger) *Watchdog {
+func NewWatchdog(cfg Config, logger log.Logger) *Watchdog {
 	if cfg.Timeout == 0 {
 		cfg.Timeout = 60 * time.Second
 	}
@@ -296,7 +296,7 @@ func (w *Watchdog) ForceStop(agentName string) error {
 // DetectDState 检测不可中断 I/O 阻塞
 func (w *Watchdog) DetectDState(pid int) bool {
 	path := fmt.Sprintf("/proc/%d/status", pid)
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304
 	if err != nil {
 		return false
 	}

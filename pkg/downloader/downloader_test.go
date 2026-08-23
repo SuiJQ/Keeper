@@ -383,7 +383,7 @@ func TestDownloadChunkRetry(t *testing.T) {
 	requestCount := 0
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestCount++
-		
+
 		// 支持 Range 请求
 		rangeHeader := r.Header.Get("Range")
 		if rangeHeader == "" {
@@ -400,7 +400,7 @@ func TestDownloadChunkRetry(t *testing.T) {
 			}
 			return
 		}
-		
+
 		// Range 请求
 		w.Header().Set("Content-Range", fmt.Sprintf("bytes %s/100", rangeHeader[6:]))
 		w.WriteHeader(http.StatusPartialContent)
@@ -478,7 +478,7 @@ func TestGetFileInfoFromGET(t *testing.T) {
 			}
 			return
 		}
-		
+
 		// 返回 1 字节，但 Content-Range 表示总大小
 		w.Header().Set("Content-Length", "1")
 		w.Header().Set("Content-Range", "bytes 0-0/100")
@@ -560,7 +560,7 @@ func TestDownloadChunk(t *testing.T) {
 			}
 			return
 		}
-		
+
 		// 解析 Range
 		var start, end int64
 		if strings.HasPrefix(rangeHeader, "bytes=") {
@@ -574,7 +574,7 @@ func TestDownloadChunk(t *testing.T) {
 				}
 			}
 		}
-		
+
 		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/100", start, end))
 		w.WriteHeader(http.StatusPartialContent)
 		for i := start; i <= end; i++ {

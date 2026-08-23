@@ -92,7 +92,7 @@ func TestCheckConfigGzip(t *testing.T) {
 
 func TestCheckConfigFile(t *testing.T) {
 	// /boot/config-* 通常不存在，应该返回 false
-	result := checkConfigFile("/boot/config-nonexistent", "CONFIG_OVERLAY_FS_USERNS=y")
+	result := checkConfigFile("/boot/config-nonexistent")
 	assert.False(t, result)
 }
 
@@ -137,7 +137,7 @@ func TestCheckConfigFileFound(t *testing.T) {
 	err := os.WriteFile(tmpFile, []byte("CONFIG_OVERLAY_FS_USERNS=y\n"), 0600)
 	require.NoError(t, err)
 
-	result := checkConfigFile(tmpFile, "CONFIG_OVERLAY_FS_USERNS=y")
+	result := checkConfigFile(tmpFile)
 	assert.True(t, result)
 }
 
@@ -146,7 +146,7 @@ func TestCheckConfigFileNotFound(t *testing.T) {
 	err := os.WriteFile(tmpFile, []byte("CONFIG_OTHER=y\n"), 0600)
 	require.NoError(t, err)
 
-	result := checkConfigFile(tmpFile, "CONFIG_OVERLAY_FS_USERNS=y")
+	result := checkConfigFile(tmpFile)
 	assert.False(t, result)
 }
 

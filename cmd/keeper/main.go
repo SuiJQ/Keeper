@@ -168,7 +168,7 @@ func startAgent(cfg *config.Config, args []string) error {
 		if err != nil {
 			return fmt.Errorf("create container: %w", err)
 		}
-		defer c.Close()
+		defer func() { _ = c.Close() }()
 
 		// 构建容器规格
 		spec := container.ContainerSpec{
@@ -248,7 +248,7 @@ func stopAgent(cfg *config.Config, args []string) error {
 	if err != nil {
 		return fmt.Errorf("create container: %w", err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	// 根据配置设置策略
 	if bc, ok := c.(*container.BwrapContainer); ok {
@@ -343,7 +343,7 @@ func runAgentCommand(cfg *config.Config, args []string) error {
 	if err != nil {
 		return fmt.Errorf("create container: %w", err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	// 根据配置设置策略
 	if bc, ok := c.(*container.BwrapContainer); ok {
@@ -380,7 +380,7 @@ func runAgentCommand(cfg *config.Config, args []string) error {
 		return fmt.Errorf("parse watchdog check interval: %w", err)
 	}
 
-	wd := watchdog.NewWatchdog(watchdog.WatchdogConfig{
+	wd := watchdog.NewWatchdog(watchdog.Config{
 		Timeout:       watchdogTimeout,
 		CheckInterval: watchdogInterval,
 	}, logger)
@@ -726,7 +726,7 @@ func isValidName(name string) bool {
 	return true
 }
 
-func listAgents(cfg *config.Config, args []string) error {
+func listAgents(cfg *config.Config, _ []string) error {
 	logger := globalLogger
 	logger.Info("listing agents")
 
@@ -1026,13 +1026,13 @@ func copyLocalToLocal(src, dst string) error {
 	if err != nil {
 		return fmt.Errorf("open source: %w", err)
 	}
-	defer srcFile.Close()
+	defer func() { _ = srcFile.Close() }()
 
 	dstFile, err := os.Create(dst)
 	if err != nil {
 		return fmt.Errorf("create destination: %w", err)
 	}
-	defer dstFile.Close()
+	defer func() { _ = dstFile.Close() }()
 
 	if _, err := io.Copy(dstFile, srcFile); err != nil {
 		return fmt.Errorf("copy data: %w", err)
@@ -1072,7 +1072,7 @@ func copyDirRecursive(src, dst string) error {
 
 		dstFile, err := os.Create(targetPath)
 		if err != nil {
-			srcFile.Close()
+			_ = srcFile.Close()
 			return err
 		}
 
@@ -1132,7 +1132,7 @@ func killProcess(pid int) error {
 }
 
 func printUsage() {
-	fmt.Fprintf(os.Stdout, `keeper - AI Agent 轻量级 Linux 运行时环境
+	_, _ = fmt.Fprintf(os.Stdout, `keeper - AI Agent 轻量级 Linux 运行时环境
 
 版本: %s
 

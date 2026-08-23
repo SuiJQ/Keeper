@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -109,30 +110,46 @@ type Config struct {
 // DefaultConfig 返回默认配置
 func DefaultConfig() *Config {
 	return &Config{
-		LogLevel:                 "info",
-		MaxDownloadBytes:         1024 * 1024 * 1024, // 1GB
-		DisableCrossDeviceCheck:  false,
-		DefaultShmSizeMB:         64,
-		DownloadTimeout:          "5m",
-		WatchdogTimeout:          "60s",
-		WatchdogCheckInterval:    "5s",
-		MCPAllowedUIDs:           []uint32{},
-		MCPAllowedGIDs:           []uint32{},
-		SeccompStrategy:          "default",
-		OverlayStrategy:          "default",
-		SnapshotCompressionLevel: 6, // 平衡速度和压缩率
+		LogLevel:                     "info",
+		MaxDownloadBytes:             1024 * 1024 * 1024, // 1GB
+		DisableCrossDeviceCheck:      false,
+		DefaultShmSizeMB:             64,
+		DownloadTimeout:              "5m",
+		WatchdogTimeout:              "60s",
+		WatchdogCheckInterval:        "5s",
+		MCPAllowedUIDs:               []uint32{},
+		MCPAllowedGIDs:               []uint32{},
+		SeccompStrategy:              "default",
+		OverlayStrategy:              "default",
+		SnapshotCompressionLevel:     6, // 平衡速度和压缩率
 		NetworkForwardMaxConnections: 0, // 不限制
 		NetworkForwardConnectTimeout: "5s",
-		DownloaderThreads:           4,
-		DownloaderChunkSize:         1024 * 1024, // 1MB
-		DownloaderRetryDelay:        "100ms",
-		StorageMaxSnapshots:         0, // 不限制
-		StoragePruneInterval:        "1h",
-		BwrapEnableUserNS:           true,
-		BwrapEnableSeccomp:          true,
-		MetricsEnabled:              true,
-		MetricsListenAddr:           ":9090",
+		DownloaderThreads:            4,
+		DownloaderChunkSize:          1024 * 1024, // 1MB
+		DownloaderRetryDelay:         "100ms",
+		StorageMaxSnapshots:          0, // 不限制
+		StoragePruneInterval:         "1h",
+		BwrapEnableUserNS:            true,
+		BwrapEnableSeccomp:           true,
+		MetricsEnabled:               true,
+		MetricsListenAddr:            ":9090",
 	}
+}
+
+// resolveConfigFile 解析配置文件路径并校验其在 home 目录内
+func resolveConfigFile(home, configFile string) (string, error) {
+	absHome, err := filepath.Abs(home)
+	if err != nil {
+		return "", fmt.Errorf("resolve home: %w", err)
+	}
+	absConfig, err := filepath.Abs(configFile)
+	if err != nil {
+		return "", fmt.Errorf("resolve config file: %w", err)
+	}
+	if !strings.HasPrefix(absConfig, absHome+string(filepath.Separator)) && absConfig != absHome {
+		return "", fmt.Errorf("config file %q is outside home %q", absConfig, absHome)
+	}
+	return absConfig, nil
 }
 
 // Load 从文件加载配置
@@ -144,10 +161,14 @@ func Load(home string) (*Config, error) {
 	cfg.AgentsDir = filepath.Join(home, "agents")
 
 	configFile := filepath.Join(home, "config.json")
+	configFile, err := resolveConfigFile(home, configFile)
+	if err != nil {
+		return nil, err
+	}
 
 	// 如果配置文件存在，加载它
 	if _, err := os.Stat(configFile); err == nil {
-		data, err := os.ReadFile(configFile)
+		data, err := os.ReadFile(configFile) // #nosec G304
 		if err != nil {
 			return nil, fmt.Errorf("read config file: %w", err)
 		}
@@ -244,7 +265,7 @@ func (c *Config) ReloadIfChanged() error {
 		return nil
 	}
 
-	data, err := os.ReadFile(file)
+	data, err := os.ReadFile(file) // #nosec G304
 	if err != nil {
 		return fmt.Errorf("read config file: %w", err)
 	}
@@ -358,18 +379,18 @@ func (c *Config) Validate() error {
 	}
 
 	validSeccomp := map[string]bool{
-		"default":    true,
-		"whitelist":  true,
-		"blacklist":  true,
-		"allow_all":  true,
+		"default":   true,
+		"whitelist": true,
+		"blacklist": true,
+		"allow_all": true,
 	}
 	if !validSeccomp[c.SeccompStrategy] {
 		return fmt.Errorf("invalid seccomp_strategy: %s", c.SeccompStrategy)
 	}
 
 	validOverlay := map[string]bool{
-		"default":    true,
-		"overlayfs":  true,
+		"default":   true,
+		"overlayfs": true,
 	}
 	if !validOverlay[c.OverlayStrategy] {
 		return fmt.Errorf("invalid overlay_strategy: %s", c.OverlayStrategy)

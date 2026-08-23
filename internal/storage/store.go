@@ -646,14 +646,14 @@ func atomicWriteFile(filename string, data []byte) error {
 		return err
 	}
 	tmpPath := tmpFile.Name()
-	defer os.Remove(tmpPath)
+	defer func() { _ = os.Remove(tmpPath) }()
 
 	if _, err := tmpFile.Write(data); err != nil {
-		tmpFile.Close()
+		_ = tmpFile.Close()
 		return err
 	}
 	if err := tmpFile.Sync(); err != nil {
-		tmpFile.Close()
+		_ = tmpFile.Close()
 		return err
 	}
 	if err := tmpFile.Close(); err != nil {
@@ -700,7 +700,7 @@ func copyPhysical(src, dst string) error {
 		}
 		dstFile, err := os.Create(targetPath)
 		if err != nil {
-			srcFile.Close()
+			_ = srcFile.Close()
 			return err
 		}
 		_, copyErr := io.Copy(dstFile, srcFile)
@@ -752,13 +752,13 @@ func atomicExchange(source, target string) error {
 	if err != nil {
 		return fmt.Errorf("open source dir: %w", err)
 	}
-	defer sourceFD.Close()
+	defer func() { _ = sourceFD.Close() }()
 
 	targetFD, err := os.Open(targetDir)
 	if err != nil {
 		return fmt.Errorf("open target dir: %w", err)
 	}
-	defer targetFD.Close()
+	defer func() { _ = targetFD.Close() }()
 
 	// 尝试使用 renameat2 进行原子交换
 	// RENAME_EXCHANGE: 原子交换两个文件
@@ -822,16 +822,16 @@ func compressCopy(src, dst string, compressionLevel int) (int64, int, error) {
 	if err != nil {
 		return 0, 0, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	gw, err := gzip.NewWriterLevel(f, compressionLevel)
 	if err != nil {
 		return 0, 0, err
 	}
-	defer gw.Close()
+	defer func() { _ = gw.Close() }()
 
 	tw := tar.NewWriter(gw)
-	defer tw.Close()
+	defer func() { _ = tw.Close() }()
 
 	var totalSize int64
 	var fileCount int
@@ -868,7 +868,7 @@ func compressCopy(src, dst string, compressionLevel int) (int64, int, error) {
 		}
 		// 立即复制并关闭文件，避免文件描述符泄漏
 		n, err := io.Copy(gw, srcFile)
-		srcFile.Close()
+		_ = srcFile.Close()
 		if err != nil {
 			return err
 		}
@@ -894,13 +894,13 @@ func decompressCopy(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	gr, err := gzip.NewReader(f)
 	if err != nil {
 		return err
 	}
-	defer gr.Close()
+	defer func() { _ = gr.Close() }()
 
 	const maxDecompressedSize = 10 << 30 // 10GB limit to prevent decompression bombs
 	var totalSize int64
@@ -940,10 +940,10 @@ func decompressCopy(src, dst string) error {
 				return err
 			}
 			if _, err := io.Copy(outFile, tr); err != nil {
-				outFile.Close()
+				_ = outFile.Close()
 				return err
 			}
-			outFile.Close()
+			_ = outFile.Close()
 		}
 	}
 	return nil

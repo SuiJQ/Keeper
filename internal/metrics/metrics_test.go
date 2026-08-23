@@ -216,6 +216,20 @@ func TestCounterNegativeAdd(t *testing.T) {
 	counter.Add(-3)
 	assert.Equal(t, int64(7), counter.Get())
 }
+
+// BenchmarkRegistryPrometheusFormat 基准测试 Prometheus 导出
+func BenchmarkRegistryPrometheusFormat(b *testing.B) {
+	registry := newTestRegistry()
+	registry.RegisterCounter("bench_counter", "help", []string{"l"}).Inc("v")
+	registry.RegisterGauge("bench_gauge", "help", []string{"l"}).Set(1)
+	registry.RegisterHistogram("bench_histogram", "help", []float64{1}, []string{"l"}).Observe(1)
+	registry.RegisterSummary("bench_summary", "help", map[float64]float64{0.5: 0.01}, []string{"l"}).Observe(1)
+
+	for i := 0; i < b.N; i++ {
+		_ = registry.PrometheusFormat()
+	}
+}
+
 // TestRegistryGetters 测试 Registry 的 Getter 方法
 func TestRegistryGetters(t *testing.T) {
 	registry := newTestRegistry()

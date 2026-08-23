@@ -43,6 +43,7 @@ func TestMCPEndToEndFullFlow(t *testing.T) {
 		AllowedUIDs: []uint32{0, safeUint32(os.Getuid())},
 		AllowedGIDs: []uint32{0, safeUint32(os.Getgid())},
 	}
+	_ = os.Getenv("KEEPER_BIN")
 
 	server, err := NewServer(cfg, log.New(os.Stderr))
 	require.NoError(t, err)

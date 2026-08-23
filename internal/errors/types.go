@@ -10,78 +10,78 @@ import (
 type ErrorCode int
 
 const (
-	// 系统级错误 (1000-1999)
+	// ErrCodeSystem system-level errors (1000-1999)
 	ErrCodeSystem ErrorCode = iota + 1000
+	// ErrCodeKernel kernel-level errors
 	ErrCodeKernel
+	// ErrCodeIO IO errors
 	ErrCodeIO
+	// ErrCodeProcess process errors
 	ErrCodeProcess
+	// ErrCodePermission permission errors
 	ErrCodePermission
 
-	// 容器级错误 (2000-2999)
+	// ErrCodeContainer container-level errors (2000-2999)
 	ErrCodeContainer
+	// ErrCodeOverlay overlay filesystem errors
 	ErrCodeOverlay
+	// ErrCodeSeccomp seccomp errors
 	ErrCodeSeccomp
+	// ErrCodeNamespace namespace errors
 	ErrCodeNamespace
+	// ErrCodeMount mount errors
 	ErrCodeMount
 
-	// 业务级错误 (3000-3999)
+	// ErrCodeAgent agent-level errors (3000-3999)
 	ErrCodeAgent
+	// ErrCodeNetwork network errors
 	ErrCodeNetwork
+	// ErrCodeStorage storage errors
 	ErrCodeStorage
+	// ErrCodeConfig configuration errors
 	ErrCodeConfig
+	// ErrCodePort port errors
 	ErrCodePort
 
-	// 致命错误 (5000-5999)
+	// ErrCodeFatalKernel fatal kernel errors (5000-5999)
 	ErrCodeFatalKernel
+	// ErrCodeFatalDState fatal D-state errors
 	ErrCodeFatalDState
+	// ErrCodeFatalBwrap fatal bwrap errors
 	ErrCodeFatalBwrap
+	// ErrCodeFatalNoSpace fatal no space errors
 	ErrCodeFatalNoSpace
 )
 
+// errorCodeNames 错误码到名称的映射
+var errorCodeNames = map[ErrorCode]string{
+	ErrCodeSystem:       "SYSTEM",
+	ErrCodeKernel:       "KERNEL",
+	ErrCodeIO:           "IO",
+	ErrCodeProcess:      "PROCESS",
+	ErrCodePermission:   "PERMISSION",
+	ErrCodeContainer:    "CONTAINER",
+	ErrCodeOverlay:      "OVERLAY",
+	ErrCodeSeccomp:      "SECCOMP",
+	ErrCodeNamespace:    "NAMESPACE",
+	ErrCodeMount:        "MOUNT",
+	ErrCodeAgent:        "AGENT",
+	ErrCodeNetwork:      "NETWORK",
+	ErrCodeStorage:      "STORAGE",
+	ErrCodeConfig:       "CONFIG",
+	ErrCodePort:         "PORT",
+	ErrCodeFatalKernel:  "FATAL_KERNEL",
+	ErrCodeFatalDState:  "FATAL_D_STATE",
+	ErrCodeFatalBwrap:   "FATAL_BWRAP",
+	ErrCodeFatalNoSpace: "FATAL_NO_SPACE",
+}
+
 // String 返回错误码的字符串表示
 func (c ErrorCode) String() string {
-	switch c {
-	case ErrCodeSystem:
-		return "SYSTEM"
-	case ErrCodeKernel:
-		return "KERNEL"
-	case ErrCodeIO:
-		return "IO"
-	case ErrCodeProcess:
-		return "PROCESS"
-	case ErrCodePermission:
-		return "PERMISSION"
-	case ErrCodeContainer:
-		return "CONTAINER"
-	case ErrCodeOverlay:
-		return "OVERLAY"
-	case ErrCodeSeccomp:
-		return "SECCOMP"
-	case ErrCodeNamespace:
-		return "NAMESPACE"
-	case ErrCodeMount:
-		return "MOUNT"
-	case ErrCodeAgent:
-		return "AGENT"
-	case ErrCodeNetwork:
-		return "NETWORK"
-	case ErrCodeStorage:
-		return "STORAGE"
-	case ErrCodeConfig:
-		return "CONFIG"
-	case ErrCodePort:
-		return "PORT"
-	case ErrCodeFatalKernel:
-		return "FATAL_KERNEL"
-	case ErrCodeFatalDState:
-		return "FATAL_D_STATE"
-	case ErrCodeFatalBwrap:
-		return "FATAL_BWRAP"
-	case ErrCodeFatalNoSpace:
-		return "FATAL_NO_SPACE"
-	default:
-		return "UNKNOWN"
+	if name, ok := errorCodeNames[c]; ok {
+		return name
 	}
+	return "UNKNOWN"
 }
 
 // KeeperError 结构化错误

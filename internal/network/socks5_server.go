@@ -13,6 +13,7 @@ import (
 type SOCKS5Server struct {
 	mu       sync.Mutex
 	running  bool
+	wg       sync.WaitGroup
 	listener net.Listener
 	addr     string
 	auth     *ProxyAuth
@@ -50,6 +51,7 @@ func (s *SOCKS5Server) Start() error {
 
 	s.logger.Info("SOCKS5 server started", log.Field{Key: "addr", Value: s.addr})
 
+	s.wg.Add(1)
 	go s.acceptLoop()
 
 	return nil
@@ -58,40 +60,47 @@ func (s *SOCKS5Server) Start() error {
 // Stop 停止 SOCKS5 服务器
 func (s *SOCKS5Server) Stop() error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	if !s.running {
+		s.mu.Unlock()
 		return nil
 	}
-
 	s.running = false
-
 	if s.listener != nil {
-		s.listener.Close()
+		_ = s.listener.Close()
 	}
+	s.mu.Unlock()
 
+	s.wg.Wait()
 	s.logger.Info("SOCKS5 server stopped")
 	return nil
 }
 
 // acceptLoop 接受连接循环
 func (s *SOCKS5Server) acceptLoop() {
+	defer s.wg.Done()
 	for {
 		conn, err := s.listener.Accept()
 		if err != nil {
-			if s.running {
+			s.mu.Lock()
+			running := s.running
+			s.mu.Unlock()
+			if running {
 				s.logger.Error("accept error", log.Field{Key: "error", Value: err.Error()})
 			}
 			return
 		}
 
-		go s.handleConnection(conn)
+		s.wg.Add(1)
+		go func(c net.Conn) {
+			defer s.wg.Done()
+			s.handleConnection(c)
+		}(conn)
 	}
 }
 
 // handleConnection 处理单个连接
 func (s *SOCKS5Server) handleConnection(conn net.Conn) {
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// 设置超时
 	_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
@@ -204,14 +213,14 @@ func (s *SOCKS5Server) handleConnect(conn net.Conn) {
 		_, _ = conn.Write([]byte{0x05, 0x05, 0x00, 0x01, 0, 0, 0, 0, 0, 0}) // 连接被拒绝
 		return
 	}
-	defer targetConn.Close()
+	defer func() { _ = targetConn.Close() }()
 
 	// 返回连接成功
 	localAddr := conn.LocalAddr().(*net.TCPAddr)
 	_, _ = conn.Write([]byte{
 		0x05, 0x00, 0x00,
 		0x01,
-		byte(localAddr.IP[0]), byte(localAddr.IP[1]), byte(localAddr.IP[2]), byte(localAddr.IP[3]),
+		localAddr.IP[0], localAddr.IP[1], localAddr.IP[2], localAddr.IP[3],
 		byte(localAddr.Port >> 8), byte(localAddr.Port & 0xff),
 	})
 

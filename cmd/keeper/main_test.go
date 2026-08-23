@@ -10,12 +10,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"keeper/internal/container"
 	"keeper/internal/metrics"
 	"keeper/internal/storage"
 	"keeper/pkg/config"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // helper: 创建临时配置
@@ -1072,6 +1073,7 @@ func TestListSnapshotsEmpty(t *testing.T) {
 	// 清理
 	_ = destroyAgent(cfg, []string{agentName})
 }
+
 // TestKillProcessInvalidPID 测试 killProcess 无效 PID
 func TestKillProcessInvalidPID(t *testing.T) {
 	// PID <= 0 应直接返回 nil

@@ -4,9 +4,10 @@ import (
 	"os"
 	"testing"
 
+	"keeper/internal/log"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"keeper/internal/log"
 )
 
 func TestBPFGenerator(t *testing.T) {
@@ -90,31 +91,31 @@ func TestNewSeccompStrategyWithLogger(t *testing.T) {
 }
 
 func TestWhitelistStrategy(t *testing.T) {
-	strat := &WhitelistStrategy{logger: log.New(os.Stderr)}
+	strategy := &WhitelistStrategy{logger: log.New(os.Stderr)}
 
-	assert.Equal(t, "whitelist", strat.Name())
+	assert.Equal(t, "whitelist", strategy.Name())
 
-	bpf, err := strat.GenerateBPF()
+	bpf, err := strategy.GenerateBPF()
 	require.NoError(t, err)
 	assert.NotEmpty(t, bpf)
 }
 
 func TestBlacklistStrategy(t *testing.T) {
-	strat := &BlacklistStrategy{logger: log.New(os.Stderr)}
+	strategy := &BlacklistStrategy{logger: log.New(os.Stderr)}
 
-	assert.Equal(t, "blacklist", strat.Name())
+	assert.Equal(t, "blacklist", strategy.Name())
 
-	bpf, err := strat.GenerateBPF()
+	bpf, err := strategy.GenerateBPF()
 	require.NoError(t, err)
 	assert.NotEmpty(t, bpf)
 }
 
 func TestAllowAllStrategy(t *testing.T) {
-	strat := &AllowAllStrategy{logger: log.New(os.Stderr)}
+	strategy := &AllowAllStrategy{logger: log.New(os.Stderr)}
 
-	assert.Equal(t, "allow_all", strat.Name())
+	assert.Equal(t, "allow_all", strategy.Name())
 
-	bpf, err := strat.GenerateBPF()
+	bpf, err := strategy.GenerateBPF()
 	require.NoError(t, err)
 	assert.Empty(t, bpf, "allow_all should return empty BPF")
 }
@@ -153,11 +154,11 @@ func TestNewOverlayStrategyWithLogger(t *testing.T) {
 }
 
 func TestOverlayFSStrategy(t *testing.T) {
-	strat := &OverlayFSStrategy{logger: log.New(os.Stderr)}
+	strategy := &OverlayFSStrategy{logger: log.New(os.Stderr)}
 
-	assert.Equal(t, "overlayfs", strat.Name())
+	assert.Equal(t, "overlayfs", strategy.Name())
 
-	args := strat.BuildArgs("/lower", "/upper", "/work", "/mnt")
+	args := strategy.BuildArgs("/lower", "/upper", "/work", "/mnt")
 	require.Len(t, args, 14)
 	assert.Contains(t, args, "--overlay")
 	assert.Contains(t, args, "/mnt")
@@ -206,19 +207,19 @@ func TestStrategyInterfaces(t *testing.T) {
 }
 
 func TestDefaultNetworkStrategy(t *testing.T) {
-	strat := NewDefaultNetworkStrategy(nil)
-	assert.Equal(t, "default", strat.Name())
+	strategy := NewDefaultNetworkStrategy(nil)
+	assert.Equal(t, "default", strategy.Name())
 
-	args, err := strat.Configure(ContainerSpec{})
+	args, err := strategy.Configure(ContainerSpec{})
 	require.NoError(t, err)
 	// 默认情况下可能返回空切片
 	assert.NotNil(t, args)
 }
 
 func TestDefaultNetworkStrategyWithEnv(t *testing.T) {
-	strat := NewDefaultNetworkStrategy(nil)
+	strategy := NewDefaultNetworkStrategy(nil)
 
-	args, err := strat.Configure(ContainerSpec{
+	args, err := strategy.Configure(ContainerSpec{
 		Envvars: []string{"FOO=bar", "BAZ=qux"},
 	})
 	require.NoError(t, err)
@@ -265,14 +266,14 @@ func TestBwrapContainerSetNetworkStrategy(t *testing.T) {
 }
 
 func TestDefaultResourceStrategy(t *testing.T) {
-	strat := NewDefaultResourceStrategy(nil)
-	assert.Equal(t, "default", strat.Name())
+	strategy := NewDefaultResourceStrategy(nil)
+	assert.Equal(t, "default", strategy.Name())
 
-	args, err := strat.Configure(ContainerSpec{})
+	args, err := strategy.Configure(ContainerSpec{})
 	require.NoError(t, err)
 	assert.Empty(t, args)
 
-	args, err = strat.Configure(ContainerSpec{ShmSize: 64})
+	args, err = strategy.Configure(ContainerSpec{ShmSize: 64})
 	require.NoError(t, err)
 	assert.Contains(t, args, "--shm-size=64m")
 }
@@ -317,10 +318,10 @@ func TestBwrapContainerSetResourceStrategy(t *testing.T) {
 }
 
 func TestDefaultLogStrategy(t *testing.T) {
-	strat := NewDefaultLogStrategy(nil)
-	assert.Equal(t, "default", strat.Name())
+	strategy := NewDefaultLogStrategy(nil)
+	assert.Equal(t, "default", strategy.Name())
 
-	args, err := strat.Configure(ContainerSpec{})
+	args, err := strategy.Configure(ContainerSpec{})
 	require.NoError(t, err)
 	assert.Contains(t, args, "--log-level=info")
 }

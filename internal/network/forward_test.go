@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"keeper/internal/log"
 )
@@ -230,9 +231,9 @@ func TestForwarderAddForward(t *testing.T) {
 
 	// 添加第一个端口转发
 	pf1 := &PortForward{
-		Host:     8768,
+		Host:      8768,
 		Container: 9003,
-		Protocol: "tcp",
+		Protocol:  "tcp",
 	}
 	err := forwarder.AddForward(pf1)
 	assert.NoError(t, err)
@@ -240,9 +241,9 @@ func TestForwarderAddForward(t *testing.T) {
 
 	// 添加第二个不同的端口转发
 	pf2 := &PortForward{
-		Host:     8769,
+		Host:      8769,
 		Container: 9004,
-		Protocol: "tcp",
+		Protocol:  "tcp",
 	}
 	err = forwarder.AddForward(pf2)
 	assert.NoError(t, err)
@@ -250,9 +251,9 @@ func TestForwarderAddForward(t *testing.T) {
 
 	// 尝试添加重复的端口转发
 	pf3 := &PortForward{
-		Host:     8768, // 与 pf1 相同
+		Host:      8768, // 与 pf1 相同
 		Container: 9005,
-		Protocol: "tcp",
+		Protocol:  "tcp",
 	}
 	err = forwarder.AddForward(pf3)
 	assert.Error(t, err)
@@ -266,9 +267,9 @@ func TestForwarderStartStop(t *testing.T) {
 
 	// 添加端口转发
 	pf := &PortForward{
-		Host:     8770,
+		Host:      8770,
 		Container: 9006,
-		Protocol: "tcp",
+		Protocol:  "tcp",
 	}
 	err := forwarder.AddForward(pf)
 	assert.NoError(t, err)
@@ -322,9 +323,9 @@ func TestForwarderStartFailure(t *testing.T) {
 
 	// 添加一个端口转发，但目标端口已被占用
 	pf := &PortForward{
-		Host:     8771,
+		Host:      8771,
 		Container: 9007,
-		Protocol: "tcp",
+		Protocol:  "tcp",
 	}
 	err := forwarder.AddForward(pf)
 	assert.NoError(t, err)
@@ -340,4 +341,59 @@ func TestForwarderStartFailure(t *testing.T) {
 	err = forwarder.Start()
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "listen on")
+}
+
+func TestForwarderStartAlreadyRunning(t *testing.T) {
+	logger := log.Global()
+	forwarder := NewForwarder(logger)
+
+	pf := &PortForward{
+		Host:      8772,
+		Container: 9008,
+		Protocol:  "tcp",
+	}
+	require.NoError(t, forwarder.AddForward(pf))
+
+	listener, err := net.Listen("tcp", "127.0.0.1:8772")
+	require.NoError(t, err)
+	defer listener.Close()
+
+	forwarder.mu.Lock()
+	forwarder.portForwards = append(forwarder.portForwards, pf)
+	forwarder.listeners = append(forwarder.listeners, listener)
+	forwarder.running = true
+	forwarder.mu.Unlock()
+
+	err = forwarder.Start()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "already running")
+}
+
+func TestForwarderRunningFlag(t *testing.T) {
+	logger := log.Global()
+	forwarder := NewForwarder(logger)
+
+	pf := &PortForward{
+		Host:      8773,
+		Container: 9009,
+		Protocol:  "tcp",
+	}
+	require.NoError(t, forwarder.AddForward(pf))
+
+	listener, err := net.Listen("tcp", "127.0.0.1:8773")
+	require.NoError(t, err)
+	defer listener.Close()
+
+	forwarder.mu.Lock()
+	forwarder.portForwards = append(forwarder.portForwards, pf)
+	forwarder.listeners = append(forwarder.listeners, listener)
+	forwarder.running = true
+	forwarder.mu.Unlock()
+
+	assert.True(t, forwarder.running)
+
+	forwarder.Stop()
+	forwarder.mu.Lock()
+	assert.False(t, forwarder.running)
+	forwarder.mu.Unlock()
 }

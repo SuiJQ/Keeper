@@ -2,6 +2,8 @@ package mcp
 
 import (
 	"testing"
+
+	"keeper/internal/log"
 )
 
 // TestMCPIntegrationWithContainer MCP 与容器集成测试（简化版）
@@ -12,6 +14,16 @@ func TestMCPIntegrationWithContainer(t *testing.T) {
 	RecordMCPToolCallDuration("create", 0.5)
 	SetActiveMCPConnections(1)
 	SetActiveMCPConnections(0)
+}
+
+func BenchmarkMCPInitialize(b *testing.B) {
+	server := &Server{
+		socketPath: "/tmp/keeper-bench.sock",
+		logger:     log.New(nil),
+	}
+	for i := 0; i < b.N; i++ {
+		_ = server.handleInitialize(Request{JSONRPC: "2.0", ID: 1})
+	}
 }
 
 // TestMCPToolCallWithAuth MCP 工具调用认证测试（简化版）

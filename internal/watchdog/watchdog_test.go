@@ -8,21 +8,22 @@ import (
 	"testing"
 	"time"
 
+	"keeper/internal/log"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"keeper/internal/log"
 )
 
 func TestNewWatchdog(t *testing.T) {
 	logger := log.Global()
-	wd := NewWatchdog(WatchdogConfig{}, logger)
+	wd := NewWatchdog(Config{}, logger)
 	assert.NotNil(t, wd)
 	assert.Equal(t, 60*time.Second, wd.timeout)
 	assert.Equal(t, 5*time.Second, wd.checkInterval)
 }
 
 func TestNewWatchdogCustomConfig(t *testing.T) {
-	cfg := WatchdogConfig{
+	cfg := Config{
 		Timeout:       30 * time.Second,
 		CheckInterval: 10 * time.Second,
 	}
@@ -32,7 +33,7 @@ func TestNewWatchdogCustomConfig(t *testing.T) {
 }
 
 func TestWatchdogStartStop(t *testing.T) {
-	wd := NewWatchdog(WatchdogConfig{}, nil)
+	wd := NewWatchdog(Config{}, nil)
 	ctx := context.Background()
 
 	err := wd.Start(ctx)
@@ -51,7 +52,7 @@ func TestWatchdogStartStop(t *testing.T) {
 }
 
 func TestWatchdogStartAlreadyRunning(t *testing.T) {
-	wd := NewWatchdog(WatchdogConfig{}, nil)
+	wd := NewWatchdog(Config{}, nil)
 	ctx := context.Background()
 
 	err := wd.Start(ctx)
@@ -66,14 +67,14 @@ func TestWatchdogStartAlreadyRunning(t *testing.T) {
 }
 
 func TestWatchdogStopNotRunning(t *testing.T) {
-	wd := NewWatchdog(WatchdogConfig{}, nil)
+	wd := NewWatchdog(Config{}, nil)
 
 	// 停止未运行的看门狗应该不报错
 	wd.Stop()
 }
 
 func TestWatchdogTriggerStop(t *testing.T) {
-	wd := NewWatchdog(WatchdogConfig{}, nil)
+	wd := NewWatchdog(Config{}, nil)
 
 	// 触发停止不存在的 agent 应该返回错误
 	err := wd.TriggerStop("nonexistent-agent")
@@ -81,7 +82,7 @@ func TestWatchdogTriggerStop(t *testing.T) {
 }
 
 func TestWatchdogForceStop(t *testing.T) {
-	wd := NewWatchdog(WatchdogConfig{}, nil)
+	wd := NewWatchdog(Config{}, nil)
 
 	// 强制停止不存在的 agent 应该返回错误
 	err := wd.ForceStop("nonexistent-agent")
@@ -89,7 +90,7 @@ func TestWatchdogForceStop(t *testing.T) {
 }
 
 func TestWatchdogDetectDState(t *testing.T) {
-	wd := NewWatchdog(WatchdogConfig{}, nil)
+	wd := NewWatchdog(Config{}, nil)
 
 	// 检测当前进程（不应该是 D 态）
 	detected := wd.DetectDState(os.Getpid())
@@ -97,7 +98,7 @@ func TestWatchdogDetectDState(t *testing.T) {
 }
 
 func TestWatchdogRecoverDState(t *testing.T) {
-	wd := NewWatchdog(WatchdogConfig{}, nil)
+	wd := NewWatchdog(Config{}, nil)
 
 	// 恢复 D 态应该返回错误
 	err := wd.RecoverDState("test-agent")
@@ -106,7 +107,7 @@ func TestWatchdogRecoverDState(t *testing.T) {
 }
 
 func TestWatchdogMonitorLoop(t *testing.T) {
-	wd := NewWatchdog(WatchdogConfig{
+	wd := NewWatchdog(Config{
 		CheckInterval: 50 * time.Millisecond,
 	}, nil)
 
@@ -134,7 +135,7 @@ func TestWatchdogMonitorLoop(t *testing.T) {
 }
 
 func TestWatchdogRegisterUnregister(t *testing.T) {
-	wd := NewWatchdog(WatchdogConfig{}, nil)
+	wd := NewWatchdog(Config{}, nil)
 
 	// 注册 agent
 	wd.RegisterAgent("test-agent", 12345)
@@ -156,7 +157,7 @@ func TestWatchdogRegisterUnregister(t *testing.T) {
 }
 
 func TestWatchdogCheckAgentTimeout(t *testing.T) {
-	wd := NewWatchdog(WatchdogConfig{
+	wd := NewWatchdog(Config{
 		Timeout:       100 * time.Millisecond,
 		CheckInterval: 50 * time.Millisecond,
 	}, nil)
@@ -200,7 +201,7 @@ func TestIsProcessAlive(t *testing.T) {
 
 // TestWatchdogCheckAgentProcessNotFound 测试 checkAgent 检测进程不存在
 func TestWatchdogCheckAgentProcessNotFound(t *testing.T) {
-	wd := NewWatchdog(WatchdogConfig{}, nil)
+	wd := NewWatchdog(Config{}, nil)
 
 	// 注册一个 agent，使用不存在的 PID
 	wd.RegisterAgent("ghost-agent", 9999999)
@@ -221,7 +222,7 @@ func TestWatchdogCheckAgentProcessNotFound(t *testing.T) {
 // TestWatchdogCheckAgentTimeout 测试 checkAgent 检测超时
 // TestWatchdogTriggerStopGraceful 测试优雅停止
 func TestWatchdogTriggerStopGraceful(t *testing.T) {
-	wd := NewWatchdog(WatchdogConfig{}, nil)
+	wd := NewWatchdog(Config{}, nil)
 
 	// 创建一个子进程
 	cmd := exec.Command("sleep", "10")
@@ -242,7 +243,7 @@ func TestWatchdogTriggerStopGraceful(t *testing.T) {
 
 // TestWatchdogUpdateTimeout 测试更新看门狗超时
 func TestWatchdogUpdateTimeout(t *testing.T) {
-	wd := NewWatchdog(WatchdogConfig{
+	wd := NewWatchdog(Config{
 		Timeout:       1 * time.Minute,
 		CheckInterval: 10 * time.Second,
 	}, log.Global())
@@ -257,7 +258,7 @@ func TestWatchdogUpdateTimeout(t *testing.T) {
 
 // TestWatchdogUpdateCheckInterval 测试更新看门狗检查间隔
 func TestWatchdogUpdateCheckInterval(t *testing.T) {
-	wd := NewWatchdog(WatchdogConfig{
+	wd := NewWatchdog(Config{
 		Timeout:       1 * time.Minute,
 		CheckInterval: 10 * time.Second,
 	}, log.Global())
@@ -305,7 +306,7 @@ func TestAgentInfoSignalProcessInvalidPID(t *testing.T) {
 
 // TestWatchdogConcurrentUpdate 测试并发更新
 func TestWatchdogConcurrentUpdate(t *testing.T) {
-	wd := NewWatchdog(WatchdogConfig{
+	wd := NewWatchdog(Config{
 		Timeout:       1 * time.Minute,
 		CheckInterval: 10 * time.Second,
 	}, log.Global())

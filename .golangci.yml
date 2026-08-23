@@ -1,0 +1,68 @@
+run:
+  timeout: 5m
+  go: "1.21"
+
+linters-settings:
+  gocyclo:
+    min-complexity: 15
+  dupl:
+    threshold: 100
+  goconst:
+    min-occurrences: 3
+  misspell:
+    locale: US
+  funlen:
+    lines: 80
+    statements: 40
+  govet:
+    check-shadowing: true
+  govarlint:
+    run: true
+  revive:
+    rules:
+      - name: exported
+        disabled: false
+      - name: package-comments
+        disabled: true
+      - name: var-naming
+        disabled: true
+
+linters:
+  enable:
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - typecheck
+    - unused
+    - gofmt
+    - goimports
+    - misspell
+    - unconvert
+    - unparam
+    - gosec
+    - gocyclo
+    - dupl
+    - goconst
+    - funlen
+    - revive
+
+issues:
+  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+  exclude:
+    - "declaration of .*"
+    - "should have comment or be unexported"
+    - "weakly typed input"
+
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - errcheck
+        - gosec
+        - gocyclo
+        - funlen
+        - dupl

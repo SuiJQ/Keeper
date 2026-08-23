@@ -78,9 +78,14 @@ func TestStateMachineValidTransitions(t *testing.T) {
 		{StateRunning, StateStopped, ""},
 		{StateRunning, StateFatalDState, ""},
 		{StateFatalKernel, StateStopped, ""},
+		{StateFatalDState, StateStopped, ""},
+		{StateFatalBwrap, StateStopped, ""},
+		{StateFatalNoSpace, StateStopped, ""},
 		{StateCreated, StateStopped, "invalid state transition"},
 		{StateRunning, StateCreated, "invalid state transition"},
 		{StateStopped, StateCreated, "invalid state transition"},
+		{StateRunning, StateFatalKernel, "invalid state transition"},
+		{StateFatalDState, StateRunning, "invalid state transition"},
 	}
 
 	for _, tt := range tests {
@@ -160,5 +165,31 @@ func TestAgentStateString(t *testing.T) {
 	agent := NewAgent("test-agent")
 	if agent.StateString() != "created" {
 		t.Errorf("Agent.StateString() = %s, want created", agent.StateString())
+	}
+}
+
+func TestAgentTransitionCount(t *testing.T) {
+	agent := NewAgent("test-agent")
+	if agent.TransitionCount() != 0 {
+		t.Errorf("Agent.TransitionCount() = %d, want 0", agent.TransitionCount())
+	}
+
+	_ = agent.UpdateState(StateRunning)
+	if agent.TransitionCount() != 1 {
+		t.Errorf("Agent.TransitionCount() = %d, want 1", agent.TransitionCount())
+	}
+
+	_ = agent.UpdateState(StateStopped)
+	if agent.TransitionCount() != 2 {
+		t.Errorf("Agent.TransitionCount() = %d, want 2", agent.TransitionCount())
+	}
+
+	// invalid transition should not increase count
+	err := agent.UpdateState(StateCreated)
+	if err == nil {
+		t.Fatalf("UpdateState(stopped -> created) returned nil, want error")
+	}
+	if agent.TransitionCount() != 2 {
+		t.Errorf("Agent.TransitionCount() = %d, want 2 after failed transition", agent.TransitionCount())
 	}
 }

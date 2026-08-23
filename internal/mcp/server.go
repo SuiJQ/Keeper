@@ -32,10 +32,15 @@ type Server struct {
 
 // ServerConfig MCP Server 配置
 type ServerConfig struct {
-	SocketPath  string
-	Store       storage.Store
-	AgentName   string
+	// SocketPath Unix socket 路径
+	SocketPath string
+	// Store 存储后端
+	Store storage.Store
+	// AgentName Agent 名称
+	AgentName string
+	// AllowedUIDs 允许连接的 UID 白名单
 	AllowedUIDs []uint32
+	// AllowedGIDs 允许连接的 GID 白名单
 	AllowedGIDs []uint32
 }
 
@@ -181,7 +186,7 @@ func (s *Server) acceptLoop(ctx context.Context) {
 
 // handleConnection 处理单个连接
 func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// SO_PEERCRED 鉴权：获取客户端 UID
 	cred, err := getPeerCredentials(conn)
@@ -243,7 +248,7 @@ func getPeerCredentials(conn net.Conn) (*syscall.Ucred, error) {
 	if err != nil {
 		return nil, fmt.Errorf("get file from conn: %w", err)
 	}
-	defer osFile.Close()
+	defer func() { _ = osFile.Close() }()
 
 	// 使用 SO_PEERCRED 获取凭证
 	cred, err := syscall.GetsockoptUcred(int(osFile.Fd()), syscall.SOL_SOCKET, syscall.SO_PEERCRED)
@@ -325,18 +330,23 @@ func (s *Server) handleRequest(ctx context.Context, req Request) Response {
 
 // handleInitialize 处理初始化请求
 func (s *Server) handleInitialize(req Request) Response {
-	return Response{
-		ID: req.ID,
-		Result: map[string]interface{}{
-			"protocolVersion": "2024-11-05",
-			"capabilities": map[string]interface{}{
-				"tools": map[string]interface{}{},
-			},
-			"serverInfo": map[string]interface{}{
-				"name":    "keeper-mcp",
-				"version": "0.1.0",
-			},
+	meta := map[string]interface{}{
+		"protocolVersion": "2024-11-05",
+		"capabilities": map[string]interface{}{
+			"tools": map[string]interface{}{},
 		},
+		"serverInfo": map[string]interface{}{
+			"name":    "keeper-mcp",
+			"version": "0.1.0",
+		},
+	}
+	if s.socketPath != "" {
+		meta["transport"] = "unix"
+		meta["socketPath"] = s.socketPath
+	}
+	return Response{
+		ID:     req.ID,
+		Result: meta,
 	}
 }
 
@@ -545,14 +555,15 @@ func (s *Server) executeTool(ctx context.Context, name string, args map[string]i
 		log.Field{Key: "bin", Value: keeperBin},
 		log.Field{Key: "args", Value: cmdArgs})
 
-	cmd := exec.CommandContext(ctx, keeperBin, cmdArgs...)
+	// keeperBin is validated by findKeeperBinary() via exec.LookPath/hardcoded paths
+	cmd := exec.CommandContext(ctx, keeperBin, cmdArgs...) // #nosec G204
 
 	// 如果 context 没有超时，设置默认超时（30 秒）
 	if _, hasTimeout := ctx.Deadline(); !hasTimeout {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
-		cmd = exec.CommandContext(ctx, keeperBin, cmdArgs...)
+		cmd = exec.CommandContext(ctx, keeperBin, cmdArgs...) // #nosec G204
 	}
 
 	output, err := cmd.CombinedOutput()

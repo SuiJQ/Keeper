@@ -50,10 +50,23 @@ func (s State) String() string {
 	return string(s)
 }
 
+// allowedTransitions 允许的状态转换表（集中定义，避免重复）
+var allowedTransitions = map[State][]State{
+	StateCreated:      {StateRunning},
+	StateStopped:      {StateRunning},
+	StateRunning:      {StateStopped, StateFatalDState},
+	StateFatalKernel:  {StateStopped},
+	StateFatalDState:  {StateStopped},
+	StateFatalBwrap:   {StateStopped},
+	StateFatalNoSpace: {StateStopped},
+}
+
 // StateMachine 状态机
 type StateMachine struct {
 	current State
 	mu      sync.Mutex
+	// 可观测：记录转换次数
+	transitions int64
 }
 
 // NewStateMachine 创建状态机
@@ -70,35 +83,28 @@ func (sm *StateMachine) State() State {
 	return sm.current
 }
 
+// Transitions 返回状态转换次数
+func (sm *StateMachine) Transitions() int64 {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	return sm.transitions
+}
+
 // CanTransition 检查状态转换是否允许
 func (sm *StateMachine) CanTransition(to State) error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
 	from := sm.current
-
-	// 允许的状态转换
-	allowed := map[State][]State{
-		StateCreated:      {StateRunning},
-		StateStopped:      {StateRunning},
-		StateRunning:      {StateStopped, StateFatalDState},
-		StateFatalKernel:  {StateStopped},
-		StateFatalDState:  {StateStopped},
-		StateFatalBwrap:   {StateStopped},
-		StateFatalNoSpace: {StateStopped},
-	}
-
-	permitted, ok := allowed[from]
+	permitted, ok := allowedTransitions[from]
 	if !ok {
 		return fmt.Errorf("invalid state: %s", from)
 	}
-
 	for _, p := range permitted {
 		if p == to {
 			return nil
 		}
 	}
-
 	return fmt.Errorf("invalid state transition: %s -> %s", from, to)
 }
 
@@ -108,30 +114,17 @@ func (sm *StateMachine) SetState(to State) error {
 	defer sm.mu.Unlock()
 
 	from := sm.current
-
-	// 允许的状态转换
-	allowed := map[State][]State{
-		StateCreated:      {StateRunning},
-		StateStopped:      {StateRunning},
-		StateRunning:      {StateStopped, StateFatalDState},
-		StateFatalKernel:  {StateStopped},
-		StateFatalDState:  {StateStopped},
-		StateFatalBwrap:   {StateStopped},
-		StateFatalNoSpace: {StateStopped},
-	}
-
-	permitted, ok := allowed[from]
+	permitted, ok := allowedTransitions[from]
 	if !ok {
 		return fmt.Errorf("invalid state: %s", from)
 	}
-
 	for _, p := range permitted {
 		if p == to {
 			sm.current = to
+			sm.transitions++
 			return nil
 		}
 	}
-
 	return fmt.Errorf("state transition not allowed: %s -> %s", from, to)
 }
 
@@ -170,4 +163,9 @@ func (a *Agent) UpdateState(to State) error {
 // StateString 返回当前状态字符串
 func (a *Agent) StateString() string {
 	return a.State.String()
+}
+
+// TransitionCount 返回状态机转换次数
+func (a *Agent) TransitionCount() int64 {
+	return a.state.Transitions()
 }

@@ -16,10 +16,15 @@ import (
 type Level string
 
 const (
+	// LevelDebug debug level
 	LevelDebug Level = "debug"
-	LevelInfo  Level = "info"
-	LevelWarn  Level = "warn"
+	// LevelInfo info level
+	LevelInfo Level = "info"
+	// LevelWarn warn level
+	LevelWarn Level = "warn"
+	// LevelError error level
 	LevelError Level = "error"
+	// LevelFatal fatal level
 	LevelFatal Level = "fatal"
 )
 
@@ -76,10 +81,10 @@ type entry struct {
 
 // logger 日志实现
 type logger struct {
-	output   io.Writer
-	fields   map[string]string
-	traceID  string
-	spanID   string
+	output  io.Writer
+	fields  map[string]string
+	traceID string
+	spanID  string
 }
 
 // New 创建新的 Logger 实例
@@ -161,7 +166,7 @@ func (l *logger) log(level Level, msg string, fields ...Field) {
 		return
 	}
 
-	fmt.Fprintln(l.output, string(data))
+	_, _ = fmt.Fprintln(l.output, string(data))
 }
 
 // Debug 调试日志

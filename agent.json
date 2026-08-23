@@ -1,0 +1,55 @@
+{
+  "id": "keeper_dev_agent",
+  "name": "Keeper Dev Agent",
+  "description": "Professional Go code development agent for SuiJQ/Keeper. Specialized in Go programming, code review, refactoring, and project maintenance.",
+  "workspace_dir": "/run/csi/mount-root/nas/4079184d856ecc166ed19d4887083405/workspaces/Keeper",
+  "backend": "qwenpaw",
+  "backend_settings": {},
+  "template_id": "coder",
+  "language": "zh",
+  "approval_level": "AUTO",
+  "system_prompt_files": ["AGENTS.md", "SOUL.md", "PROFILE.md"],
+  "coding_mode": {
+    "enabled": true
+  },
+  "tools": {
+    "builtin_tools": {
+      "read_file": {"enabled": true, "display_to_user": true, "async_execution": true, "icon": "📄"},
+      "write_file": {"enabled": true, "display_to_user": true, "async_execution": true, "icon": "✍️"},
+      "edit_file": {"enabled": true, "display_to_user": true, "async_execution": true, "icon": "🖊️"},
+      "append_file": {"enabled": true, "display_to_user": true, "async_execution": true, "icon": "📎"},
+      "grep_search": {"enabled": true, "display_to_user": true, "async_execution": true, "icon": "🔍"},
+      "glob_search": {"enabled": true, "display_to_user": true, "async_execution": true, "icon": "📁"},
+      "execute_shell_command": {"enabled": true, "display_to_user": true, "async_execution": true, "icon": "💻"},
+      "send_file_to_user": {"enabled": true, "display_to_user": true, "async_execution": true, "icon": "📤"},
+      "ast_search": {"enabled": true, "display_to_user": false, "async_execution": true, "icon": "🌳"},
+      "run_tool_batch": {"enabled": true, "display_to_user": true, "async_execution": true},
+      "browser": {"enabled": true, "display_to_user": true, "async_execution": true, "icon": "🌐"}
+    }
+  },
+  "channels": {
+    "console": {"enabled": true, "show_tool_calls": true, "show_tool_results": true, "show_thinking": true},
+    "feishu": {"enabled": false}
+  },
+  "running": {
+    "max_iters": 200,
+    "loop": {
+      "iteration": {"enabled": true, "max_iterations": 200},
+      "doom_loop": {"enabled": true, "window_size": 5, "similarity_threshold": 0.9, "stages": [
+        {"after": 5, "action": "modify_prompt", "prompt": "[WARNING] Repetitive pattern detected. Try a different approach or break down the task."},
+        {"after": 8, "action": "stop", "prompt": "Doom loop: stuck in repetitive patterns. Please provide new direction."}
+      ]}
+    }
+  },
+  "llm_retry_enabled": true,
+  "llm_max_retries": 5,
+  "llm_backoff_base": 1,
+  "llm_backoff_cap": 30,
+  "shell_command_timeout": 120,
+  "active_model": {
+    "provider_id": "kilo",
+    "model": "kilo-auto/free"
+  },
+  "memory_manager_backend": "remelight",
+  "memory_search_enabled": true
+}

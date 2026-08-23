@@ -124,6 +124,7 @@ func (c *BwrapContainer) Start(ctx context.Context, spec ContainerSpec) (int, er
 
 	// 检查环境依赖
 	if err := c.checkDependencies(); err != nil {
+		c.status.State = "fatal_bwrap_exec"
 		RecordContainerStart("bwrap", "error")
 		return 0, err
 	}
@@ -149,6 +150,7 @@ func (c *BwrapContainer) Start(ctx context.Context, spec ContainerSpec) (int, er
 
 	// 启动进程
 	if err := cmd.Start(); err != nil {
+		c.status.State = "fatal_bwrap_exec"
 		RecordContainerStart("bwrap", "error")
 		return 0, fmt.Errorf("start bwrap: %w", err)
 	}
@@ -205,6 +207,9 @@ func (c *BwrapContainer) Stop(ctx context.Context, grace time.Duration) error {
 		if err := c.cmd.Process.Kill(); err != nil {
 			c.logger.Error("error killing container", log.Field{Key: "error", Value: err.Error()})
 			RecordContainerStop("bwrap", "error")
+			c.status.State = "stopped"
+			c.status.PID = 0
+			c.status.PGID = 0
 			return fmt.Errorf("kill container: %w", err)
 		}
 		<-done // 等待进程完全退出
@@ -422,14 +427,18 @@ func (c *BwrapContainer) buildArgs(spec ContainerSpec) ([]string, string) {
 		args = append(args, "--overlay", "/", "/lower:/upper:/work")
 	}
 
-	// 共享内存（使用资源策略接口）
+	// 共享内存（默认值）
+	shmSize := spec.ShmSize
+	if shmSize <= 0 {
+		shmSize = 64
+	}
 	if c.resourceStrat != nil {
 		resourceArgs, err := c.resourceStrat.Configure(spec)
 		if err == nil {
 			args = append(args, resourceArgs...)
 		}
-	} else if spec.ShmSize > 0 {
-		args = append(args, fmt.Sprintf("--shm-size=%dm", spec.ShmSize))
+	} else {
+		args = append(args, fmt.Sprintf("--shm-size=%dm", shmSize))
 	}
 
 	// 网络配置（使用网络策略接口）
@@ -461,11 +470,9 @@ func (c *BwrapContainer) buildArgs(spec ContainerSpec) ([]string, string) {
 		}
 	}
 
-	// 端口映射（通过 socat 或 iptables 实现，bwrap 本身不直接支持）
-	// 这里仅记录配置，实际转发由外部网络模块处理
-	for range spec.Ports {
-		// bwrap 不支持原生端口映射，需要宿主机 socat/iptables 配合
-	}
+	// 端口映射由外部网络模块处理；bwrap 本身不直接支持端口映射
+	// 避免依赖未定义行为，此处不构建端口相关参数
+	_ = spec.Ports
 
 	// Seccomp BPF（使用策略接口）
 	if c.enableSeccomp {

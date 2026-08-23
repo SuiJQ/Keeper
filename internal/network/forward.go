@@ -20,6 +20,7 @@ var bufferPool = sync.Pool{
 // Forwarder 端口转发器
 type Forwarder struct {
 	mu           sync.Mutex
+	running      bool
 	portForwards []*PortForward
 	listeners    []net.Listener
 	logger       log.Logger
@@ -66,6 +67,9 @@ func (f *Forwarder) Start() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
+	if f.running {
+		return fmt.Errorf("port forwarder already running")
+	}
 	startTime := time.Now()
 	for _, pf := range f.portForwards {
 		if err := f.startForward(pf); err != nil {
@@ -75,6 +79,7 @@ func (f *Forwarder) Start() error {
 			return fmt.Errorf("start forward %s: %w", pf.String(), err)
 		}
 	}
+	f.running = true
 
 	RecordPortForward("success")
 	RecordPortForwardDuration(time.Since(startTime).Seconds())
@@ -106,7 +111,12 @@ func (f *Forwarder) acceptLoop(listener net.Listener, pf *PortForward) {
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			f.logger.Debug("accept error", log.Field{Key: "error", Value: err.Error()})
+			f.mu.Lock()
+			running := f.running
+			f.mu.Unlock()
+			if running {
+				f.logger.Debug("accept error", log.Field{Key: "error", Value: err.Error()})
+			}
 			return
 		}
 
@@ -116,15 +126,17 @@ func (f *Forwarder) acceptLoop(listener net.Listener, pf *PortForward) {
 			current := f.activeConnections[pf.Host]
 			if current >= pf.MaxConnections {
 				f.mu.Unlock()
-				conn.Close()
+				_ = conn.Close()
 				f.logger.Warn("max connections reached, rejecting new connection",
 					log.Field{Key: "host", Value: pf.Host},
 					log.Field{Key: "max", Value: pf.MaxConnections},
 					log.Field{Key: "current", Value: current})
 				RecordProxyConnection("rejected")
+				SetForwarderActiveConnections(fmt.Sprintf("%d", pf.Host), f.activeConnections[pf.Host])
 				continue
 			}
 			f.activeConnections[pf.Host]++
+			SetForwarderActiveConnections(fmt.Sprintf("%d", pf.Host), f.activeConnections[pf.Host])
 			f.mu.Unlock()
 		}
 
@@ -137,7 +149,7 @@ func (f *Forwarder) handleConnection(clientConn net.Conn, pf *PortForward) {
 	startTime := time.Now()
 	RecordProxyConnection("attempt")
 	defer func() {
-		clientConn.Close()
+		_ = clientConn.Close()
 		// 减少活跃连接计数
 		if pf.MaxConnections > 0 {
 			f.mu.Lock()
@@ -145,6 +157,7 @@ func (f *Forwarder) handleConnection(clientConn net.Conn, pf *PortForward) {
 			if f.activeConnections[pf.Host] < 0 {
 				f.activeConnections[pf.Host] = 0
 			}
+			SetForwarderActiveConnections(fmt.Sprintf("%d", pf.Host), f.activeConnections[pf.Host])
 			f.mu.Unlock()
 		}
 	}()
@@ -166,20 +179,20 @@ func (f *Forwarder) handleConnection(clientConn net.Conn, pf *PortForward) {
 		RecordProxyConnection("error")
 		return
 	}
-	defer containerConn.Close()
+	defer func() { _ = containerConn.Close() }()
 
 	// 双向数据转发
 	done := make(chan struct{}, 2)
 
 	go func() {
 		n, _ := ioCopy(clientConn, containerConn)
-		RecordDataTransfer("to_container", int64(n))
+		RecordDataTransfer("to_container", n)
 		done <- struct{}{}
 	}()
 
 	go func() {
 		n, _ := ioCopy(containerConn, clientConn)
-		RecordDataTransfer("to_client", int64(n))
+		RecordDataTransfer("to_client", n)
 		done <- struct{}{}
 	}()
 
@@ -222,9 +235,10 @@ func (f *Forwarder) Stop() {
 // stopInternal 内部停止方法（不持有锁，避免死锁）
 func (f *Forwarder) stopInternal() {
 	for _, listener := range f.listeners {
-		listener.Close()
+		_ = listener.Close()
 	}
 	f.listeners = nil
 	f.portForwards = nil
 	f.activeConnections = make(map[int]int)
+	f.running = false
 }

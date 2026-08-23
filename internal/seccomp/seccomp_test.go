@@ -18,7 +18,7 @@ func TestGenerateBPFDefault(t *testing.T) {
 }
 
 func TestGenerateBPFAllowAll(t *testing.T) {
-	filter := &SeccompFilter{
+	filter := &Filter{
 		AllowList:     []string{},
 		DenyList:      []string{},
 		DefaultAction: RetAllow,
@@ -31,7 +31,7 @@ func TestGenerateBPFAllowAll(t *testing.T) {
 }
 
 func TestGenerateBPFWhitelist(t *testing.T) {
-	filter := &SeccompFilter{
+	filter := &Filter{
 		AllowList:     []string{"read", "write", "close"},
 		DenyList:      []string{},
 		DefaultAction: RetKill,
@@ -43,7 +43,7 @@ func TestGenerateBPFWhitelist(t *testing.T) {
 }
 
 func TestGenerateBPFBlacklist(t *testing.T) {
-	filter := &SeccompFilter{
+	filter := &Filter{
 		AllowList:     []string{},
 		DenyList:      []string{"reboot", "mount"},
 		DefaultAction: RetAllow,
@@ -55,7 +55,7 @@ func TestGenerateBPFBlacklist(t *testing.T) {
 }
 
 func TestGenerateBPFUnknownSyscall(t *testing.T) {
-	filter := &SeccompFilter{
+	filter := &Filter{
 		AllowList:     []string{"unknown_syscall_12345"},
 		DenyList:      []string{},
 		DefaultAction: RetAllow,
@@ -109,7 +109,7 @@ func TestGetSyscallNumber(t *testing.T) {
 	assert.Equal(t, uint32(0), num)
 }
 
-func TestSeccompFilterDefaults(t *testing.T) {
+func TestFilterDefaults(t *testing.T) {
 	filter := NewDefaultFilter()
 	assert.NotNil(t, filter)
 	assert.NotNil(t, filter.AllowList)
@@ -123,25 +123,25 @@ func TestBPFProgramBytesAlignment(t *testing.T) {
 	// 测试不同大小的 BPF 程序
 	tests := []struct {
 		name     string
-		filter   *SeccompFilter
+		filter   *Filter
 		minSize  int
 		multiple int
 	}{
 		{
 			name:     "allow all",
-			filter:   &SeccompFilter{AllowList: []string{}, DenyList: []string{}, DefaultAction: RetAllow},
+			filter:   &Filter{AllowList: []string{}, DenyList: []string{}, DefaultAction: RetAllow},
 			minSize:  8,
 			multiple: 8,
 		},
 		{
 			name:     "single allow",
-			filter:   &SeccompFilter{AllowList: []string{"read"}, DenyList: []string{}, DefaultAction: RetKill},
+			filter:   &Filter{AllowList: []string{"read"}, DenyList: []string{}, DefaultAction: RetKill},
 			minSize:  16,
 			multiple: 8,
 		},
 		{
 			name:     "multiple deny",
-			filter:   &SeccompFilter{AllowList: []string{}, DenyList: []string{"reboot", "mount"}, DefaultAction: RetAllow},
+			filter:   &Filter{AllowList: []string{}, DenyList: []string{"reboot", "mount"}, DefaultAction: RetAllow},
 			minSize:  24,
 			multiple: 8,
 		},
@@ -224,10 +224,10 @@ func TestBPFEmptyProgram(t *testing.T) {
 	assert.Equal(t, 0, len(data))
 }
 
-func TestSeccompFilterAllowDenyConflict(t *testing.T) {
+func TestFilterAllowDenyConflict(t *testing.T) {
 	// 测试同时有 Allow 和 Deny 的情况
 	// DenyList 应该优先
-	filter := &SeccompFilter{
+	filter := &Filter{
 		AllowList:     []string{"read", "write", "reboot"}, // reboot 也在 AllowList 中
 		DenyList:      []string{"reboot"},                  // 但被 DenyList 拒绝
 		DefaultAction: RetKill,
@@ -254,7 +254,7 @@ func TestRetActionConstants(t *testing.T) {
 	assert.Equal(t, uint32(0x00000002), uint32(RetKillThread))
 }
 
-func TestSeccompFilterNil(t *testing.T) {
+func TestFilterNil(t *testing.T) {
 	// 测试 nil 过滤器
 	bpf, err := GenerateBPF(nil)
 	require.NoError(t, err)
@@ -262,9 +262,9 @@ func TestSeccompFilterNil(t *testing.T) {
 	assert.Equal(t, 8, len(bpf)) // 应该只有一条 RET ALLOW
 }
 
-func TestSeccompFilterEmptyDefaultAction(t *testing.T) {
+func TestFilterEmptyDefaultAction(t *testing.T) {
 	// 测试空 DefaultAction（应该被替换为 RetAllow）
-	filter := &SeccompFilter{
+	filter := &Filter{
 		AllowList:     []string{},
 		DenyList:      []string{},
 		DefaultAction: 0,
@@ -290,7 +290,7 @@ func BenchmarkGenerateBPFDefault(b *testing.B) {
 }
 
 func BenchmarkGenerateBPFWhitelist(b *testing.B) {
-	filter := &SeccompFilter{
+	filter := &Filter{
 		AllowList:     []string{"read", "write", "open", "close", "stat", "fstat", "mmap", "munmap", "brk", "ioctl"},
 		DenyList:      []string{},
 		DefaultAction: RetKill,
@@ -304,7 +304,7 @@ func BenchmarkGenerateBPFWhitelist(b *testing.B) {
 }
 
 func BenchmarkGenerateBPFBlacklist(b *testing.B) {
-	filter := &SeccompFilter{
+	filter := &Filter{
 		AllowList:     []string{},
 		DenyList:      []string{"reboot", "mount", "umount", "swapon", "swapoff", "pivot_root", "chroot"},
 		DefaultAction: RetAllow,

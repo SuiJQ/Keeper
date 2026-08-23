@@ -45,6 +45,8 @@ jobs:
 
       - name: Run unit tests
         run: go test ./...
+        env:
+          KEEPER_BIN: ${{ github.workspace }}/bin/keeper
 
       - name: Check binary size
         run: |

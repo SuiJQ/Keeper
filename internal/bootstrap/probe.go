@@ -113,7 +113,7 @@ func checkOverlayUserNS() bool {
 		"/boot/config",
 	}
 	for _, path := range configPaths {
-		if checkConfigFile(path, "CONFIG_OVERLAY_FS_USERNS=y") {
+		if checkConfigFile(path) {
 			return true
 		}
 	}
@@ -128,25 +128,26 @@ func checkConfigGzip(pattern string) bool {
 	if err != nil {
 		return false
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	gz, err := gzip.NewReader(f)
 	if err != nil {
 		return false
 	}
-	defer gz.Close()
+	defer func() { _ = gz.Close() }()
 
 	return scanConfig(gz, pattern)
 }
 
-func checkConfigFile(path, pattern string) bool {
-	f, err := os.Open(path)
+func checkConfigFile(path string) bool {
+	const overlayUserNSPattern = "CONFIG_OVERLAY_FS_USERNS=y"
+	f, err := os.Open(path) // #nosec G304
 	if err != nil {
 		return false
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
-	return scanConfig(f, pattern)
+	return scanConfig(f, overlayUserNSPattern)
 }
 
 func scanConfig(r io.Reader, pattern string) bool {
