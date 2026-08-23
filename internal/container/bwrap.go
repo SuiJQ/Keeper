@@ -75,15 +75,15 @@ func (c *BwrapContainer) SetEnableSeccomp(enable bool) {
 	c.enableSeccomp = enable
 }
 
-// BwrapFactory bwrap 容器运行时工厂
+// BwrapFactory implements the container.Factory interface using bubblewrap.
 type BwrapFactory struct{}
 
-// NewBwrapFactory 创建 bwrap 工厂
+// NewBwrapFactory creates a new BwrapFactory instance.
 func NewBwrapFactory() *BwrapFactory {
 	return &BwrapFactory{}
 }
 
-// Create 创建容器运行时实例
+// Create creates a new bwrap-backed container runtime instance.
 func (f *BwrapFactory) Create(name string) (Container, error) {
 	logger := log.Global().WithFields(log.Field{Key: "container", Value: name})
 	logger.Info("creating bwrap container")

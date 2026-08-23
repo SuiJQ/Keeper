@@ -46,7 +46,7 @@ type ServerConfig struct {
 	AllowedGIDs []uint32
 }
 
-// NewServer 创建 MCP Server 实例
+// NewServer creates a new MCP server instance bound to a Unix domain socket.
 func NewServer(cfg ServerConfig, logger log.Logger) (*Server, error) {
 	if cfg.SocketPath == "" {
 		cfg.SocketPath = defaultSocketPath(cfg.AgentName)

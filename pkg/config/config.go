@@ -1,4 +1,4 @@
-// Package config 管理 Keeper 配置
+// Package config manages Keeper configuration.
 package config
 
 import (
@@ -152,7 +152,7 @@ func resolveConfigFile(home, configFile string) (string, error) {
 	return absConfig, nil
 }
 
-// Load 从文件加载配置
+// Load loads Keeper configuration from the specified home directory.
 func Load(home string) (*Config, error) {
 	cfg := DefaultConfig()
 	cfg.Home = home
@@ -192,7 +192,7 @@ func Load(home string) (*Config, error) {
 	return cfg, nil
 }
 
-// LoadDefaultIfExists 尝试从默认位置加载配置
+// LoadDefaultIfExists attempts to load configuration from the default Keeper directory.
 func LoadDefaultIfExists() (*Config, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -210,7 +210,7 @@ func LoadDefaultIfExists() (*Config, error) {
 	return Load(defaultHome)
 }
 
-// Save 保存配置到文件
+// Save persists the configuration to disk.
 func (c *Config) Save() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -343,7 +343,7 @@ func (c *Config) applyConfig(file string, info os.FileInfo) error {
 	return nil
 }
 
-// Validate 验证配置有效性
+// Validate checks whether the current configuration is valid.
 func (c *Config) Validate() error {
 	if c.Home == "" {
 		return fmt.Errorf("home directory is required")

@@ -24,7 +24,7 @@ type ProbeResult struct {
 	Errors           []string
 }
 
-// ProbeEnvironment 探测环境
+// ProbeEnvironment detects kernel and tooling support required by Keeper.
 func ProbeEnvironment() *ProbeResult {
 	result := &ProbeResult{
 		KernelVersion:    runtime.GOOS + "/" + runtime.GOARCH,

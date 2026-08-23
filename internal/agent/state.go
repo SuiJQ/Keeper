@@ -141,7 +141,7 @@ type Agent struct {
 	state     *StateMachine
 }
 
-// NewAgent 创建新 Agent
+// NewAgent creates a new Agent instance with the given name.
 func NewAgent(name string) *Agent {
 	return &Agent{
 		Name:      name,
@@ -151,7 +151,7 @@ func NewAgent(name string) *Agent {
 	}
 }
 
-// UpdateState 更新状态
+// UpdateState updates the agent state if the transition is allowed.
 func (a *Agent) UpdateState(to State) error {
 	if err := a.state.SetState(to); err != nil {
 		return err
@@ -160,12 +160,12 @@ func (a *Agent) UpdateState(to State) error {
 	return nil
 }
 
-// StateString 返回当前状态字符串
+// StateString returns the current state as a string.
 func (a *Agent) StateString() string {
 	return a.State.String()
 }
 
-// TransitionCount 返回状态机转换次数
+// TransitionCount returns the number of state transitions performed.
 func (a *Agent) TransitionCount() int64 {
 	return a.state.Transitions()
 }

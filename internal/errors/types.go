@@ -1,4 +1,4 @@
-// Package errors 定义 Keeper 的错误体系
+// Package errors defines Keeper's error system.
 package errors
 
 import (
@@ -6,7 +6,7 @@ import (
 	"fmt"
 )
 
-// ErrorCode 错误码枚举
+// ErrorCode is the enumeration of Keeper error codes.
 type ErrorCode int
 
 const (
@@ -107,7 +107,7 @@ func (e *KeeperError) Unwrap() error {
 	return e.Cause
 }
 
-// NewKeeperError 创建新的 KeeperError
+// NewKeeperError creates a new KeeperError with the given code, message, and cause.
 func NewKeeperError(code ErrorCode, message string, cause error) *KeeperError {
 	return &KeeperError{
 		Code:        code,
@@ -136,7 +136,7 @@ func (e *KeeperError) WithMetadata(key, value string) *KeeperError {
 	return e
 }
 
-// IsKeeperError 检查是否为 KeeperError
+// IsKeeperError checks whether the error is a KeeperError.
 func IsKeeperError(err error) (*KeeperError, bool) {
 	var keeperErr *KeeperError
 	if errors.As(err, &keeperErr) {
@@ -145,7 +145,7 @@ func IsKeeperError(err error) (*KeeperError, bool) {
 	return nil, false
 }
 
-// IsRecoverable 检查错误是否可恢复
+// IsRecoverable checks whether the error is recoverable.
 func IsRecoverable(err error) bool {
 	if keeperErr, ok := IsKeeperError(err); ok {
 		return keeperErr.Recoverable

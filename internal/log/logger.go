@@ -87,7 +87,7 @@ type logger struct {
 	spanID  string
 }
 
-// New 创建新的 Logger 实例
+// New creates a new Logger instance writing to the given output.
 func New(output io.Writer) Logger {
 	if output == nil {
 		output = os.Stdout
@@ -211,24 +211,24 @@ func (l *logger) SetOutput(w io.Writer) {
 // 全局日志器实例
 var defaultLogger Logger = New(os.Stdout)
 
-// SetGlobal 设置全局日志器
+// SetGlobal sets the global logger instance.
 func SetGlobal(logger Logger) {
 	defaultLogger = logger
 }
 
-// Global 获取全局日志器
+// Global returns the global logger instance.
 func Global() Logger {
 	return defaultLogger
 }
 
-// GenerateTraceID 生成新的 trace ID（16 字节随机 hex）
+// GenerateTraceID generates a new random trace ID (16-byte hex string).
 func GenerateTraceID() string {
 	buf := make([]byte, 16)
 	_, _ = rand.Read(buf)
 	return hex.EncodeToString(buf)
 }
 
-// GenerateSpanID 生成新的 span ID（8 字节随机 hex）
+// GenerateSpanID generates a new random span ID (8-byte hex string).
 func GenerateSpanID() string {
 	buf := make([]byte, 8)
 	_, _ = rand.Read(buf)
@@ -253,12 +253,12 @@ func (g *traceIDGen) Next() string {
 	return hex.EncodeToString(g.state)
 }
 
-// NextTraceID 生成全局唯一 trace ID
+// NextTraceID generates a globally unique trace ID.
 func NextTraceID() string {
 	return traceIDGenerator.Next()
 }
 
-// NextSpanID 生成全局唯一 span ID
+// NextSpanID generates a globally unique span ID.
 func NextSpanID() string {
 	buf := make([]byte, 8)
 	_, _ = rand.Read(buf)
