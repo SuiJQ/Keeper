@@ -1,6 +1,7 @@
 package network
 
 import (
+	"context"
 	"net"
 	"sync"
 	"testing"
@@ -395,5 +396,248 @@ func TestForwarderRunningFlag(t *testing.T) {
 	forwarder.Stop()
 	forwarder.mu.Lock()
 	assert.False(t, forwarder.running)
+	forwarder.mu.Unlock()
+}
+
+func TestForwarderShutdown(t *testing.T) {
+	logger := log.Global()
+	forwarder := NewForwarder(logger)
+
+	pf := &PortForward{
+		Host:      8880,
+		Container: 9000,
+		Protocol:  "tcp",
+	}
+	require.NoError(t, forwarder.AddForward(pf))
+
+	// 模拟容器监听
+	containerListener, err := net.Listen("tcp", "127.0.0.1:9000")
+	require.NoError(t, err)
+	defer containerListener.Close()
+
+	go func() {
+		for {
+			conn, err := containerListener.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				buf := make([]byte, 1024)
+				for {
+					_, err := c.Read(buf)
+					if err != nil {
+						return
+					}
+				}
+			}(conn)
+		}
+	}()
+
+	// 启动转发
+	require.NoError(t, forwarder.Start())
+	require.True(t, forwarder.running)
+
+	// 优雅关闭
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+	require.NoError(t, forwarder.Shutdown(ctx))
+
+	assert.False(t, forwarder.running)
+	assert.Len(t, forwarder.listeners, 0)
+	assert.Len(t, forwarder.portForwards, 0)
+	assert.Len(t, forwarder.activeConnections, 0)
+}
+
+func TestForwarderShutdownClosesActiveConnections(t *testing.T) {
+	logger := log.Global()
+	forwarder := NewForwarder(logger)
+
+	pf := &PortForward{
+		Host:           8881,
+		Container:      9001,
+		Protocol:       "tcp",
+		MaxConnections: 1,
+		ConnectTimeout: 1 * time.Second,
+	}
+	require.NoError(t, forwarder.AddForward(pf))
+
+	// 模拟容器监听
+	containerListener, err := net.Listen("tcp", "127.0.0.1:9001")
+	require.NoError(t, err)
+	defer containerListener.Close()
+
+	go func() {
+		for {
+			conn, err := containerListener.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				buf := make([]byte, 1024)
+				for {
+					_, err := c.Read(buf)
+					if err != nil {
+						return
+					}
+				}
+			}(conn)
+		}
+	}()
+
+	require.NoError(t, forwarder.Start())
+
+	// 建立连接并保持活跃
+	conn, err := net.Dial("tcp", "127.0.0.1:8881")
+	require.NoError(t, err)
+	defer conn.Close()
+
+	// 等待连接建立
+	time.Sleep(50 * time.Millisecond)
+
+	forwarder.mu.Lock()
+	connCount := forwarder.activeConnections[8881]
+	forwarder.mu.Unlock()
+	assert.Equal(t, 1, connCount)
+
+	// 优雅关闭（短超时，强制关闭活跃连接）
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	require.NoError(t, forwarder.Shutdown(ctx))
+
+	// 连接应该被关闭
+	buf := make([]byte, 1)
+	_ = conn.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+	_, err = conn.Read(buf)
+	assert.Error(t, err)
+}
+
+func TestForwarderBidirectionalDataFlow(t *testing.T) {
+	logger := log.Global()
+	forwarder := NewForwarder(logger)
+
+	// 启动后端服务器
+	backendListener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer backendListener.Close()
+
+	backendPort := backendListener.Addr().(*net.TCPAddr).Port
+
+	backendData := make(chan string, 1)
+	go func() {
+		for {
+			conn, err := backendListener.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				buf := make([]byte, 1024)
+				n, _ := c.Read(buf)
+				if n > 0 {
+					backendData <- string(buf[:n])
+				}
+				_, _ = c.Write([]byte("backend-echo"))
+			}(conn)
+		}
+	}()
+
+	pf := &PortForward{
+		Host:           8882,
+		Container:      backendPort,
+		Protocol:       "tcp",
+		MaxConnections: 0,
+		ConnectTimeout: 1 * time.Second,
+	}
+	require.NoError(t, forwarder.AddForward(pf))
+	require.NoError(t, forwarder.Start())
+
+	// 客户端连接
+	conn, err := net.Dial("tcp", "127.0.0.1:8882")
+	require.NoError(t, err)
+	defer conn.Close()
+
+	// 发送数据到后端
+	_, err = conn.Write([]byte("hello-backend"))
+	require.NoError(t, err)
+
+	// 读取后端响应
+	conn.SetReadDeadline(time.Now().Add(1 * time.Second))
+	resp := make([]byte, 1024)
+	n, err := conn.Read(resp)
+	require.NoError(t, err)
+	assert.Equal(t, "backend-echo", string(resp[:n]))
+
+	// 验证后端收到了数据
+	select {
+	case msg := <-backendData:
+		assert.Equal(t, "hello-backend", msg)
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("backend did not receive data")
+	}
+
+	forwarder.Stop()
+}
+
+func TestForwarderConnectionTracking(t *testing.T) {
+	logger := log.Global()
+	forwarder := NewForwarder(logger)
+
+	pf := &PortForward{
+		Host:           8883,
+		Container:      9002,
+		Protocol:       "tcp",
+		MaxConnections: 0,
+		ConnectTimeout: 1 * time.Second,
+	}
+	require.NoError(t, forwarder.AddForward(pf))
+
+	// 模拟容器监听
+	containerListener, err := net.Listen("tcp", "127.0.0.1:9002")
+	require.NoError(t, err)
+	defer containerListener.Close()
+
+	go func() {
+		for {
+			conn, err := containerListener.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				buf := make([]byte, 1024)
+				for {
+					_, err := c.Read(buf)
+					if err != nil {
+						return
+					}
+				}
+			}(conn)
+		}
+	}()
+
+	require.NoError(t, forwarder.Start())
+
+	// 建立连接
+	conn, err := net.Dial("tcp", "127.0.0.1:8883")
+	require.NoError(t, err)
+	defer conn.Close()
+
+	// 等待连接建立
+	time.Sleep(50 * time.Millisecond)
+
+	// 验证连接被追踪
+	forwarder.mu.Lock()
+	tracked := forwarder.connections[8883]
+	forwarder.mu.Unlock()
+	require.Len(t, tracked, 1)
+
+	// 停止转发，连接应该被关闭
+	forwarder.Stop()
+
+	// 验证追踪列表已清空
+	forwarder.mu.Lock()
+	assert.Len(t, forwarder.connections, 0)
 	forwarder.mu.Unlock()
 }

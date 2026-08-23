@@ -22,23 +22,21 @@ func TestSOCKS5ServerHandleUsernameAuth(t *testing.T) {
 		{
 			name:           "empty credentials rejects all",
 			auth:           &ProxyAuth{Username: "", Password: ""},
-			request:        []byte{0x01, 0x05, 0x61, 0x6c, 0x69, 0x63, 0x65},
+			request:        []byte{0x01, 0x00, 0x00},
 			expectSuccess:  false,
 			expectResponse: []byte{0x01, 0x01}, // 认证失败
 		},
 		{
-			// 注意：由于 handleUsernameAuth 中密码解析包含密码长度字节，
-			// 此处使用特殊构造的密码以匹配实际解析结果
-			name:           "correct credentials with bug-compatible password",
-			auth:           &ProxyAuth{Username: "a", Password: "\x01"},
-			request:        []byte{0x01, 0x01, 0x61, 0x01, 0x01},
+			name:           "correct credentials",
+			auth:           &ProxyAuth{Username: "alice", Password: "secret"},
+			request:        []byte{0x01, 0x05, 0x61, 0x6c, 0x69, 0x63, 0x65, 0x06, 0x73, 0x65, 0x63, 0x72, 0x65, 0x74},
 			expectSuccess:  true,
 			expectResponse: []byte{0x01, 0x00}, // 认证成功
 		},
 		{
 			name:           "wrong password",
 			auth:           &ProxyAuth{Username: "alice", Password: "secret"},
-			request:        []byte{0x01, 0x05, 0x61, 0x6c, 0x69, 0x63, 0x65, 0x06, 0x77, 0x72, 0x6f, 0x6e, 0x67},
+			request:        []byte{0x01, 0x05, 0x61, 0x6c, 0x69, 0x63, 0x65, 0x05, 0x77, 0x72, 0x6f, 0x6e, 0x67},
 			expectSuccess:  false,
 			expectResponse: []byte{0x01, 0x01}, // 认证失败
 		},
@@ -67,7 +65,7 @@ func TestSOCKS5ServerHandleUsernameAuth(t *testing.T) {
 			defer conn.Close()
 
 			// 发送认证版本协商
-			_, _ = conn.Write([]byte{0x05, 0x01, 0x00, 0x02, 0x00, 0x01})
+			_, _ = conn.Write([]byte{0x05, 0x01, 0x02})
 
 			// 读取版本协商响应
 			buf := make([]byte, 256)
