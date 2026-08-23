@@ -265,6 +265,36 @@ func (c *Config) ReloadIfChanged() error {
 		return nil
 	}
 
+	return c.applyConfig(file, info)
+}
+
+// OnReload 注册配置变更回调
+func (c *Config) OnReload(fn func(*Config)) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.onReload = append(c.onReload, fn)
+}
+
+// ensureDirs 确保必要目录存在
+func (c *Config) ensureDirs() error {
+	dirs := []string{
+		c.Home,
+		c.BinDir,
+		c.CacheDir,
+		c.AgentsDir,
+	}
+
+	for _, dir := range dirs {
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// applyConfig 将重载后的配置应用到当前实例，并触发回调
+func (c *Config) applyConfig(file string, info os.FileInfo) error {
 	data, err := os.ReadFile(file) // #nosec G304
 	if err != nil {
 		return fmt.Errorf("read config file: %w", err)
@@ -281,7 +311,6 @@ func (c *Config) ReloadIfChanged() error {
 		return fmt.Errorf("parse config file: %w", err)
 	}
 
-	// 保留内部字段
 	c.LogLevel = newCfg.LogLevel
 	c.MaxDownloadBytes = newCfg.MaxDownloadBytes
 	c.DisableCrossDeviceCheck = newCfg.DisableCrossDeviceCheck
@@ -307,34 +336,8 @@ func (c *Config) ReloadIfChanged() error {
 	c.MetricsListenAddr = newCfg.MetricsListenAddr
 	c.modTime = info.ModTime()
 
-	// 触发回调
 	for _, fn := range c.onReload {
 		fn(c)
-	}
-
-	return nil
-}
-
-// OnReload 注册配置变更回调
-func (c *Config) OnReload(fn func(*Config)) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.onReload = append(c.onReload, fn)
-}
-
-// ensureDirs 确保必要目录存在
-func (c *Config) ensureDirs() error {
-	dirs := []string{
-		c.Home,
-		c.BinDir,
-		c.CacheDir,
-		c.AgentsDir,
-	}
-
-	for _, dir := range dirs {
-		if err := os.MkdirAll(dir, 0700); err != nil {
-			return err
-		}
 	}
 
 	return nil
