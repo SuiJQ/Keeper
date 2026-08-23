@@ -21,11 +21,11 @@ import (
 )
 
 const (
-	appName        = "keeper"
-	version        = "0.1.0-dev"
-	defaultHome    = ".local/share/keeper"
-	stateRunning   = "running"
-	stateStopped   = "stopped"
+	appName         = "keeper"
+	version         = "0.1.0-dev"
+	defaultHome     = ".local/share/keeper"
+	stateRunning    = "running"
+	stateStopped    = "stopped"
 	stateFatalBwrap = "fatal_bwrap_exec"
 )
 
@@ -711,13 +711,16 @@ func isValidName(name string) bool {
 	if len(name) < 1 || len(name) > 32 {
 		return false
 	}
-	// 必须以字母或数字开头
-	first := rune(name[0])
-	if !((first >= 'a' && first <= 'z') ||
+	return isValidFirstRune(rune(name[0])) && isValidRunes(name)
+}
+
+func isValidFirstRune(first rune) bool {
+	return (first >= 'a' && first <= 'z') ||
 		(first >= 'A' && first <= 'Z') ||
-		(first >= '0' && first <= '9')) {
-		return false
-	}
+		(first >= '0' && first <= '9')
+}
+
+func isValidRunes(name string) bool {
 	for _, c := range name {
 		if !((c >= 'a' && c <= 'z') ||
 			(c >= 'A' && c <= 'Z') ||

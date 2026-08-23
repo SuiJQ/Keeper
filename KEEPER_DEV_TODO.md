@@ -13,14 +13,14 @@
 - [x] 实现 SOCKS5 代理服务端
 - [x] 实现端口转发服务端
 - [x] 完善 bwrap Start 生命周期与错误态
-- [ ] MCP SO_PEERCRED 鉴权增强（配置化 UID/GID 白名单）
+- [x] MCP SO_PEERCRED 鉴权增强（配置化 UID/GID 白名单）
 - [ ] 网络模块单测覆盖新增路径
 
 ## P2 — 质量与可维护性（进行中）
 - [x] 消除 state.go 重复的状态转换映射
 - [x] 统一错误包装与错误码定义
 - [ ] 为公共函数添加 godoc 注释
-- [ ] 提取魔法数字为常量
+- [x] 提取魔法数字为常量（main.go state 常量已提取）
 - [ ] 审查并简化 buildArgs 逻辑
 - [x] 补充 agent 状态机测试
 - [x] 补充 config 热重载测试
