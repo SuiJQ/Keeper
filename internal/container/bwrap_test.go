@@ -32,7 +32,7 @@ func TestBwrapContainerStart(t *testing.T) {
 	require.NoError(t, err)
 
 	// Start 应该因为缺少 bwrap 而失败
-	spec := ContainerSpec{
+	spec := Spec{
 		Rootfs:   "/",
 		UpperDir: "/tmp/upper",
 		WorkDir:  "/tmp/work",
@@ -84,7 +84,7 @@ func TestBuildArgs(t *testing.T) {
 	bwrap, ok := container.(*BwrapContainer)
 	require.True(t, ok)
 
-	spec := ContainerSpec{
+	spec := Spec{
 		Rootfs:     "/rootfs",
 		UpperDir:   "/upper",
 		WorkDir:    "/work",
@@ -182,7 +182,7 @@ func TestBuildArgsMinimal(t *testing.T) {
 	bwrap, ok := container.(*BwrapContainer)
 	require.True(t, ok)
 
-	spec := ContainerSpec{
+	spec := Spec{
 		Rootfs:   "/rootfs",
 		UpperDir: "/upper",
 		WorkDir:  "/work",
@@ -227,7 +227,7 @@ func TestBuildArgsWithPorts(t *testing.T) {
 	bwrap, ok := container.(*BwrapContainer)
 	require.True(t, ok)
 
-	spec := ContainerSpec{
+	spec := Spec{
 		Rootfs:   "/rootfs",
 		UpperDir: "/upper",
 		WorkDir:  "/work",

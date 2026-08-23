@@ -41,37 +41,37 @@ type ProxyAuth struct {
 	Password string
 }
 
-// NetworkManager 网络管理器
-type NetworkManager struct {
+// Manager 网络管理器
+type Manager struct {
 	portForwards []*PortForward
 	proxy        *SOCKS5Proxy
 }
 
-// NewNetworkManager 创建网络管理器
-func NewNetworkManager() *NetworkManager {
-	return &NetworkManager{
+// NewManager 创建网络管理器
+func NewManager() *Manager {
+	return &Manager{
 		portForwards: make([]*PortForward, 0),
 	}
 }
 
 // AddPortForward 添加端口转发
-func (nm *NetworkManager) AddPortForward(pf *PortForward) {
-	nm.portForwards = append(nm.portForwards, pf)
+func (m *Manager) AddPortForward(pf *PortForward) {
+	m.portForwards = append(m.portForwards, pf)
 }
 
 // PortForwards 返回端口转发列表
-func (nm *NetworkManager) PortForwards() []*PortForward {
-	return nm.portForwards
+func (m *Manager) PortForwards() []*PortForward {
+	return m.portForwards
 }
 
 // SetSOCKS5Proxy 设置 SOCKS5 代理
-func (nm *NetworkManager) SetSOCKS5Proxy(proxy *SOCKS5Proxy) {
-	nm.proxy = proxy
+func (m *Manager) SetSOCKS5Proxy(proxy *SOCKS5Proxy) {
+	m.proxy = proxy
 }
 
 // SOCKS5Proxy 返回 SOCKS5 代理配置
-func (nm *NetworkManager) SOCKS5Proxy() *SOCKS5Proxy {
-	return nm.proxy
+func (m *Manager) SOCKS5Proxy() *SOCKS5Proxy {
+	return m.proxy
 }
 
 // IsPortInUse 检查端口是否被占用

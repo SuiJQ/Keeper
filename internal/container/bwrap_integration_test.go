@@ -48,7 +48,7 @@ func TestBwrapContainerBuildArgs(t *testing.T) {
 		enableUserNS:  true,
 	}
 
-	spec := ContainerSpec{
+	spec := Spec{
 		Name:      "test-container",
 		Rootfs:    rootfs,
 		UpperDir:  upper,
@@ -121,7 +121,7 @@ func TestBwrapContainerBuildArgsWithCustomBPF(t *testing.T) {
 	// 自定义 BPF 数据
 	customBPF := []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00} // 简单的 RET ALLOW
 
-	spec := ContainerSpec{
+	spec := Spec{
 		Name:       "test-container",
 		Rootfs:     rootfs,
 		UpperDir:   upper,
@@ -141,12 +141,12 @@ func TestBwrapContainerBuildArgsWithCustomBPF(t *testing.T) {
 	assert.Equal(t, customBPF, data, "BPF file should contain custom data")
 }
 
-// TestBwrapContainerStatus 测试 bwrap Status 方法
-func TestBwrapContainerStatus(t *testing.T) {
+// TestBwrapStatus 测试 bwrap Status 方法
+func TestBwrapStatus(t *testing.T) {
 	// 测试未启动的容器
 	c := &BwrapContainer{
 		name: "test-container",
-		status: ContainerStatus{
+		status: Status{
 			State: "created",
 			PID:   0,
 		},
@@ -161,7 +161,7 @@ func TestBwrapContainerStatus(t *testing.T) {
 	// 测试已停止的容器（cmd 为 nil）
 	c2 := &BwrapContainer{
 		name:   "test-container-2",
-		status: ContainerStatus{State: "stopped"},
+		status: Status{State: "stopped"},
 		logger: &testLogger{},
 	}
 
@@ -177,16 +177,16 @@ func TestBwrapContainerType(t *testing.T) {
 	assert.Equal(t, "bwrap", factory.Type())
 }
 
-// TestContainerSpecValidation 测试容器规格验证
-func TestContainerSpecValidation(t *testing.T) {
+// TestSpecValidation 测试容器规格验证
+func TestSpecValidation(t *testing.T) {
 	tests := []struct {
 		name      string
-		spec      ContainerSpec
+		spec      Spec
 		expectErr bool
 	}{
 		{
 			name: "valid spec",
-			spec: ContainerSpec{
+			spec: Spec{
 				Name:     "test",
 				Rootfs:   "/tmp/rootfs",
 				UpperDir: "/tmp/upper",
@@ -196,7 +196,7 @@ func TestContainerSpecValidation(t *testing.T) {
 		},
 		{
 			name: "missing rootfs",
-			spec: ContainerSpec{
+			spec: Spec{
 				Name:     "test",
 				UpperDir: "/tmp/upper",
 				WorkDir:  "/tmp/work",
@@ -229,7 +229,7 @@ func TestBwrapArgsOverlayFormat(t *testing.T) {
 	require.NoError(t, os.MkdirAll(work, 0755))
 
 	c := &BwrapContainer{logger: &testLogger{}}
-	spec := ContainerSpec{
+	spec := Spec{
 		Name:     "test",
 		Rootfs:   rootfs,
 		UpperDir: upper,
@@ -278,7 +278,7 @@ func TestBwrapArgsSeccompDisabled(t *testing.T) {
 	require.NoError(t, os.MkdirAll(work, 0755))
 
 	c := &BwrapContainer{logger: &testLogger{}}
-	spec := ContainerSpec{
+	spec := Spec{
 		Name:     "test",
 		Rootfs:   rootfs,
 		UpperDir: upper,
@@ -423,7 +423,7 @@ func TestBwrapContainerStartCheckDependenciesError(t *testing.T) {
 
 	// 在当前环境，Start 会因为内核或 bwrap 缺失而失败
 	ctx := context.Background()
-	spec := ContainerSpec{
+	spec := Spec{
 		Name:     "test-container",
 		Rootfs:   "/tmp/rootfs",
 		UpperDir: "/tmp/upper",
@@ -445,7 +445,7 @@ func TestBwrapContainerStartCheckDependenciesError(t *testing.T) {
 func TestBwrapContainerStopNotRunning(t *testing.T) {
 	c := &BwrapContainer{
 		name:   "test-container",
-		status: ContainerStatus{State: "created"},
+		status: Status{State: "created"},
 		logger: &testLogger{},
 	}
 
@@ -460,7 +460,7 @@ func TestBwrapContainerStopNotRunning(t *testing.T) {
 func TestBwrapContainerExecNotRunning(t *testing.T) {
 	c := &BwrapContainer{
 		name:   "test-container",
-		status: ContainerStatus{State: "created"},
+		status: Status{State: "created"},
 		logger: &testLogger{},
 	}
 
@@ -476,12 +476,12 @@ func TestBwrapContainerExecNotRunning(t *testing.T) {
 	assert.Contains(t, err.Error(), "container not running")
 }
 
-// TestBwrapContainerStatusRunning 测试运行中容器的状态
-func TestBwrapContainerStatusRunning(t *testing.T) {
+// TestBwrapStatusRunning 测试运行中容器的状态
+func TestBwrapStatusRunning(t *testing.T) {
 	// 模拟一个正在运行的容器
 	c := &BwrapContainer{
 		name: "test-container",
-		status: ContainerStatus{
+		status: Status{
 			State:  "running",
 			PID:    12345,
 			PGID:   12345,
@@ -505,7 +505,7 @@ func TestBwrapContainerLifecycle(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	spec := ContainerSpec{
+	spec := Spec{
 		Name:     "lifecycle-test",
 		Rootfs:   "/tmp/rootfs",
 		UpperDir: "/tmp/upper",
@@ -598,7 +598,7 @@ func TestBwrapContainerBuildArgsWithWorkspace(t *testing.T) {
 	require.NoError(t, os.MkdirAll(workspace, 0755))
 
 	c := &BwrapContainer{logger: &testLogger{}}
-	spec := ContainerSpec{
+	spec := Spec{
 		Name:      "test",
 		Rootfs:    rootfs,
 		UpperDir:  upper,
@@ -654,7 +654,7 @@ func TestBwrapContainerBuildArgsWithStrategies(t *testing.T) {
 		},
 	}
 
-	spec := ContainerSpec{
+	spec := Spec{
 		Name:      "strategy-test",
 		Rootfs:    rootfs,
 		UpperDir:  upper,
@@ -689,7 +689,7 @@ type CustomNetworkStrategy struct {
 }
 
 func (s *CustomNetworkStrategy) Name() string { return customStrategyName }
-func (s *CustomNetworkStrategy) Configure(spec ContainerSpec) ([]string, error) {
+func (s *CustomNetworkStrategy) Configure(spec Spec) ([]string, error) {
 	args := []string{}
 	for _, ns := range s.nameservers {
 		args = append(args, "--setenv=NAMESERVER="+ns)
@@ -703,7 +703,7 @@ type CustomResourceStrategy struct {
 }
 
 func (s *CustomResourceStrategy) Name() string { return customStrategyName }
-func (s *CustomResourceStrategy) Configure(spec ContainerSpec) ([]string, error) {
+func (s *CustomResourceStrategy) Configure(spec Spec) ([]string, error) {
 	return []string{fmt.Sprintf("--shm-size=%dm", s.shmSize)}, nil
 }
 
@@ -713,7 +713,7 @@ type CustomLogStrategy struct {
 }
 
 func (s *CustomLogStrategy) Name() string { return customStrategyName }
-func (s *CustomLogStrategy) Configure(spec ContainerSpec) ([]string, error) {
+func (s *CustomLogStrategy) Configure(spec Spec) ([]string, error) {
 	return []string{"--log-level=" + s.level}, nil
 }
 
@@ -770,13 +770,13 @@ func TestBwrapContainerStartNotCreated(t *testing.T) {
 	c := &BwrapContainer{
 		name:          "test-container",
 		logger:        &testLogger{},
-		status:        ContainerStatus{State: "destroyed"},
+		status:        Status{State: "destroyed"},
 		enableUserNS:  true,
 		enableSeccomp: true,
 	}
 
 	ctx := context.Background()
-	spec := ContainerSpec{
+	spec := Spec{
 		Name:   "test-container",
 		Rootfs: "/tmp/rootfs",
 	}
@@ -800,7 +800,7 @@ func TestMockContainerLifecycle(t *testing.T) {
 	assert.NotNil(t, factory)
 
 	ctx := context.Background()
-	spec := ContainerSpec{
+	spec := Spec{
 		Name:    "mock-test",
 		Rootfs:  "/tmp/rootfs",
 		ShmSize: 64,
@@ -862,7 +862,7 @@ func TestMockContainerLifecycle(t *testing.T) {
 func TestMockContainerDoubleStart(t *testing.T) {
 	factory := NewMockFactory(nil)
 	ctx := context.Background()
-	spec := ContainerSpec{Name: "double-start"}
+	spec := Spec{Name: "double-start"}
 
 	container, err := factory.Create("double-start")
 	assert.NoError(t, err)
@@ -894,7 +894,7 @@ func TestMockContainerStopNotStarted(t *testing.T) {
 func TestMockContainerExecHistory(t *testing.T) {
 	factory := NewMockFactory(nil)
 	ctx := context.Background()
-	spec := ContainerSpec{Name: "exec-history"}
+	spec := Spec{Name: "exec-history"}
 
 	container, err := factory.Create("exec-history")
 	assert.NoError(t, err)

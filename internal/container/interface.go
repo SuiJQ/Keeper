@@ -14,8 +14,8 @@ type PortMapping struct {
 	Container int
 }
 
-// ContainerSpec 容器规格
-type ContainerSpec struct {
+// Spec 容器规格
+type Spec struct {
 	// Name 容器名称
 	Name string
 	// Rootfs 根文件系统路径
@@ -36,8 +36,8 @@ type ContainerSpec struct {
 	Ports []PortMapping
 }
 
-// ContainerStatus 容器状态
-type ContainerStatus struct {
+// Status 容器状态
+type Status struct {
 	// State 容器状态：running/stopped/fatal_*
 	State string
 	// PID 主进程 PID
@@ -55,7 +55,7 @@ type ContainerStatus struct {
 // Container 容器运行时接口
 type Container interface {
 	// Start 启动容器，返回监控进程 PID
-	Start(ctx context.Context, spec ContainerSpec) (int, error)
+	Start(ctx context.Context, spec Spec) (int, error)
 
 	// Stop 停止容器，grace 为优雅关闭超时
 	Stop(ctx context.Context, grace time.Duration) error
@@ -64,7 +64,7 @@ type Container interface {
 	Exec(ctx context.Context, req ExecRequest) (*ExecResponse, error)
 
 	// Status 查询容器状态
-	Status(ctx context.Context) (*ContainerStatus, error)
+	Status(ctx context.Context) (*Status, error)
 
 	// Close 清理所有资源
 	Close() error

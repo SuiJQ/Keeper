@@ -37,7 +37,7 @@ func TestMockContainerStartStop(t *testing.T) {
 	require.NoError(t, err)
 
 	// 启动
-	pid, err := container.Start(context.Background(), ContainerSpec{})
+	pid, err := container.Start(context.Background(), Spec{})
 	require.NoError(t, err)
 	assert.Equal(t, 12345, pid)
 	assert.True(t, func() bool { c, _ := container.(*MockContainer); return c.IsStarted() }())
@@ -53,11 +53,11 @@ func TestMockContainerStartTwice(t *testing.T) {
 	container, err := factory.Create("test")
 	require.NoError(t, err)
 
-	_, err = container.Start(context.Background(), ContainerSpec{})
+	_, err = container.Start(context.Background(), Spec{})
 	require.NoError(t, err)
 
 	// 再次启动应该失败
-	_, err = container.Start(context.Background(), ContainerSpec{})
+	_, err = container.Start(context.Background(), Spec{})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "already started")
 }
@@ -67,7 +67,7 @@ func TestMockContainerExec(t *testing.T) {
 	container, err := factory.Create("test")
 	require.NoError(t, err)
 
-	_, err = container.Start(context.Background(), ContainerSpec{})
+	_, err = container.Start(context.Background(), Spec{})
 	require.NoError(t, err)
 
 	// 执行命令
@@ -132,7 +132,7 @@ func TestMockContainerConcurrentOperations(t *testing.T) {
 	}
 
 	// 并发启动所有容器
-	spec := ContainerSpec{Name: "test"}
+	spec := Spec{Name: "test"}
 	for i := 0; i < 10; i++ {
 		go func(idx int) {
 			_, err := containers[idx].Start(context.Background(), spec)
@@ -170,8 +170,8 @@ func TestMockContainerConcurrentOperations(t *testing.T) {
 	}
 }
 
-// TestMockContainerStatusTransitions 测试状态转换
-func TestMockContainerStatusTransitions(t *testing.T) {
+// TestMockStatusTransitions 测试状态转换
+func TestMockStatusTransitions(t *testing.T) {
 	factory := NewMockFactory(nil)
 	container, err := factory.Create("test")
 	require.NoError(t, err)
@@ -185,7 +185,7 @@ func TestMockContainerStatusTransitions(t *testing.T) {
 	assert.Equal(t, "created", status.State)
 
 	// 启动
-	spec := ContainerSpec{Name: "test"}
+	spec := Spec{Name: "test"}
 	_, err = container.Start(context.Background(), spec)
 	require.NoError(t, err)
 	assert.True(t, mockContainer.IsStarted())
@@ -211,7 +211,7 @@ func TestMockContainerMultipleExecs(t *testing.T) {
 	require.NoError(t, err)
 
 	// 启动容器
-	spec := ContainerSpec{Name: "test"}
+	spec := Spec{Name: "test"}
 	_, err = container.Start(context.Background(), spec)
 	require.NoError(t, err)
 

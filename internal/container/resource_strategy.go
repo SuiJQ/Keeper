@@ -12,7 +12,7 @@ type ResourceStrategy interface {
 	Name() string
 
 	// Configure 配置容器资源限制
-	Configure(spec ContainerSpec) ([]string, error)
+	Configure(spec Spec) ([]string, error)
 }
 
 // DefaultResourceStrategy 默认资源限制策略
@@ -34,7 +34,7 @@ func (s *DefaultResourceStrategy) Name() string {
 }
 
 // Configure 配置容器资源限制
-func (s *DefaultResourceStrategy) Configure(spec ContainerSpec) ([]string, error) {
+func (s *DefaultResourceStrategy) Configure(spec Spec) ([]string, error) {
 	args := []string{}
 
 	// 配置共享内存大小

@@ -174,7 +174,7 @@ func startAgent(cfg *config.Config, args []string) error {
 		defer func() { _ = c.Close() }()
 
 		// 构建容器规格
-		spec := container.ContainerSpec{
+		spec := container.Spec{
 			Name:      name,
 			Rootfs:    meta.RootfsDir,
 			UpperDir:  meta.UpperDir,

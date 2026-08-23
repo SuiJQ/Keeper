@@ -210,7 +210,7 @@ func TestDefaultNetworkStrategy(t *testing.T) {
 	strategy := NewDefaultNetworkStrategy(nil)
 	assert.Equal(t, "default", strategy.Name())
 
-	args, err := strategy.Configure(ContainerSpec{})
+	args, err := strategy.Configure(Spec{})
 	require.NoError(t, err)
 	// 默认情况下可能返回空切片
 	assert.NotNil(t, args)
@@ -219,7 +219,7 @@ func TestDefaultNetworkStrategy(t *testing.T) {
 func TestDefaultNetworkStrategyWithEnv(t *testing.T) {
 	strategy := NewDefaultNetworkStrategy(nil)
 
-	args, err := strategy.Configure(ContainerSpec{
+	args, err := strategy.Configure(Spec{
 		Envvars: []string{"FOO=bar", "BAZ=qux"},
 	})
 	require.NoError(t, err)
@@ -269,11 +269,11 @@ func TestDefaultResourceStrategy(t *testing.T) {
 	strategy := NewDefaultResourceStrategy(nil)
 	assert.Equal(t, "default", strategy.Name())
 
-	args, err := strategy.Configure(ContainerSpec{})
+	args, err := strategy.Configure(Spec{})
 	require.NoError(t, err)
 	assert.Empty(t, args)
 
-	args, err = strategy.Configure(ContainerSpec{ShmSize: 64})
+	args, err = strategy.Configure(Spec{ShmSize: 64})
 	require.NoError(t, err)
 	assert.Contains(t, args, "--shm-size=64m")
 }
@@ -321,7 +321,7 @@ func TestDefaultLogStrategy(t *testing.T) {
 	strategy := NewDefaultLogStrategy(nil)
 	assert.Equal(t, "default", strategy.Name())
 
-	args, err := strategy.Configure(ContainerSpec{})
+	args, err := strategy.Configure(Spec{})
 	require.NoError(t, err)
 	assert.Contains(t, args, "--log-level=info")
 }

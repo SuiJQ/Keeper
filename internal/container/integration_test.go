@@ -41,7 +41,7 @@ func TestBwrapFactoryLifecycle(t *testing.T) {
 	require.NotNil(t, c)
 
 	// 2. 构建容器规格
-	spec := ContainerSpec{
+	spec := Spec{
 		Name:      "test-agent",
 		Rootfs:    filepath.Join(tmpDir, "cache", "rootfs"),
 		UpperDir:  filepath.Join(tmpDir, "agents", "test-agent", "upper"),
@@ -99,7 +99,7 @@ func TestMockContainerConcurrent(t *testing.T) {
 	c, err := factory.Create("concurrent-test")
 	require.NoError(t, err)
 
-	_, err = c.Start(context.Background(), ContainerSpec{})
+	_, err = c.Start(context.Background(), Spec{})
 	require.NoError(t, err)
 
 	// 并发执行命令

@@ -12,7 +12,7 @@ type NetworkStrategy interface {
 	Name() string
 
 	// Configure 配置容器网络
-	Configure(spec ContainerSpec) ([]string, error)
+	Configure(spec Spec) ([]string, error)
 }
 
 // DefaultNetworkStrategy 默认网络策略
@@ -34,7 +34,7 @@ func (s *DefaultNetworkStrategy) Name() string {
 }
 
 // Configure 配置容器网络
-func (s *DefaultNetworkStrategy) Configure(spec ContainerSpec) ([]string, error) {
+func (s *DefaultNetworkStrategy) Configure(spec Spec) ([]string, error) {
 	args := []string{}
 
 	// 配置 DNS

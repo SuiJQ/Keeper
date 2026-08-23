@@ -400,7 +400,7 @@ func GenerateBPF(filter *Filter) ([]byte, error) {
 	}
 
 	// 默认：允许所有
-	return generateAllowAllBPF(prog, filter.DefaultAction), nil
+	return generateAllowAllBPF(prog), nil
 }
 
 // generateWhitelistBPF 生成白名单 BPF 程序
@@ -536,7 +536,7 @@ func generateBlacklistBPF(prog *BPFProgram, denied map[uint32]bool, defaultActio
 }
 
 // generateAllowAllBPF 生成允许所有的 BPF 程序
-func generateAllowAllBPF(prog *BPFProgram, defaultAction RetAction) []byte {
+func generateAllowAllBPF(prog *BPFProgram) []byte {
 	// 简单的 BPF 程序：直接返回允许
 	prog.Instructions = append(prog.Instructions, BPFInstruction{
 		Opcode: BPF_RET | BPF_K,

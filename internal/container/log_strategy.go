@@ -12,7 +12,7 @@ type LogStrategy interface {
 	Name() string
 
 	// Configure 配置容器日志
-	Configure(spec ContainerSpec) ([]string, error)
+	Configure(spec Spec) ([]string, error)
 }
 
 const defaultStrategyName = "default"
@@ -36,7 +36,7 @@ func (s *DefaultLogStrategy) Name() string {
 }
 
 // Configure 配置容器日志
-func (s *DefaultLogStrategy) Configure(spec ContainerSpec) ([]string, error) {
+func (s *DefaultLogStrategy) Configure(spec Spec) ([]string, error) {
 	args := []string{}
 
 	// 配置日志输出

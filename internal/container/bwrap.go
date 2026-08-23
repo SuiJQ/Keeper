@@ -26,7 +26,7 @@ const stateStopped = "stopped"
 type BwrapContainer struct {
 	name          string
 	cmd           *exec.Cmd
-	status        ContainerStatus
+	status        Status
 	logger        log.Logger
 	seccompStrat  SeccompStrategy
 	overlayStrat  OverlayStrategy
@@ -106,7 +106,7 @@ func (f *BwrapFactory) Create(name string) (Container, error) {
 		networkStrat:  NewDefaultNetworkStrategy(logger),
 		resourceStrat: NewDefaultResourceStrategy(logger),
 		logStrat:      NewDefaultLogStrategy(logger),
-		status: ContainerStatus{
+		status: Status{
 			State: "created",
 		},
 		enableUserNS:  enableUserNS,
@@ -120,7 +120,7 @@ func (f *BwrapFactory) Type() string {
 }
 
 // Start 启动容器
-func (c *BwrapContainer) Start(ctx context.Context, spec ContainerSpec) (int, error) {
+func (c *BwrapContainer) Start(ctx context.Context, spec Spec) (int, error) {
 	c.logger.Info("starting container")
 	startTime := time.Now()
 
@@ -158,7 +158,7 @@ func (c *BwrapContainer) Start(ctx context.Context, spec ContainerSpec) (int, er
 	}
 
 	c.cmd = cmd
-	c.status = ContainerStatus{
+	c.status = Status{
 		State:  "running",
 		PID:    cmd.Process.Pid,
 		PGID:   cmd.Process.Pid,
@@ -328,7 +328,7 @@ func (c *BwrapContainer) Exec(ctx context.Context, req ExecRequest) (*ExecRespon
 }
 
 // Status 查询容器状态
-func (c *BwrapContainer) Status(ctx context.Context) (*ContainerStatus, error) {
+func (c *BwrapContainer) Status(ctx context.Context) (*Status, error) {
 	if c.cmd == nil || c.cmd.Process == nil {
 		// 未启动的容器返回当前状态（可能是 created 或 destroyed）
 		return &c.status, nil
@@ -396,7 +396,7 @@ func (c *BwrapContainer) checkKernelSupport() bool {
 }
 
 // buildArgs 构建 bwrap 参数，返回参数列表和 Seccomp BPF 临时文件路径（如果有）
-func (c *BwrapContainer) buildArgs(spec ContainerSpec) ([]string, string) {
+func (c *BwrapContainer) buildArgs(spec Spec) ([]string, string) {
 	var args []string
 	var bpfFile string
 

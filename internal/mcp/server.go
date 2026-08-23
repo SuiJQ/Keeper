@@ -299,11 +299,7 @@ func (s *Server) authorize(cred *syscall.Ucred) error {
 	}
 
 	if len(s.allowedGIDs) > 0 {
-		allowed, err := groupMember(cred.Gid, s.allowedGIDs)
-		if err != nil {
-			return err
-		}
-		if !allowed {
+		if !groupMember(cred.Gid, s.allowedGIDs) {
 			return fmt.Errorf("gid %d not allowed", cred.Gid)
 		}
 	}
@@ -312,19 +308,19 @@ func (s *Server) authorize(cred *syscall.Ucred) error {
 }
 
 // groupMember 判断 GID 是否在白名单中，或属于白名单中的附属组
-func groupMember(gid uint32, allowedGIDs map[uint32]struct{}) (bool, error) {
+func groupMember(gid uint32, allowedGIDs map[uint32]struct{}) bool {
 	if _, ok := allowedGIDs[gid]; ok {
-		return true, nil
+		return true
 	}
 
 	u, err := user.Lookup(fmt.Sprintf("%d", os.Getuid()))
 	if err != nil {
-		return false, nil
+		return false
 	}
 
 	ids, err := u.GroupIds()
 	if err != nil {
-		return false, nil
+		return false
 	}
 	for _, id := range ids {
 		g, err := strconv.ParseUint(id, 10, 32)
@@ -332,11 +328,11 @@ func groupMember(gid uint32, allowedGIDs map[uint32]struct{}) (bool, error) {
 			continue
 		}
 		if uint32(g) == gid {
-			return true, nil
+			return true
 		}
 	}
 
-	return false, nil
+	return false
 }
 
 // handleRequest 处理单个请求

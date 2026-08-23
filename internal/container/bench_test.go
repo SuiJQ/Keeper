@@ -25,7 +25,7 @@ func BenchmarkBuildArgs(b *testing.B) {
 	require.NoError(b, os.MkdirAll(work, 0755))
 
 	c := &BwrapContainer{logger: &testLogger{}}
-	spec := ContainerSpec{
+	spec := Spec{
 		Name:     "bench-container",
 		Rootfs:   rootfs,
 		UpperDir: upper,
@@ -52,7 +52,7 @@ func BenchmarkMockStartStop(b *testing.B) {
 		c, err := factory.Create(name)
 		require.NoError(b, err)
 
-		_, err = c.Start(context.Background(), ContainerSpec{Name: name})
+		_, err = c.Start(context.Background(), Spec{Name: name})
 		require.NoError(b, err)
 
 		err = c.Stop(context.Background(), 5*time.Second)
@@ -66,7 +66,7 @@ func BenchmarkMockExec(b *testing.B) {
 	c, err := factory.Create("bench-exec")
 	require.NoError(b, err)
 
-	_, err = c.Start(context.Background(), ContainerSpec{Name: "bench-exec"})
+	_, err = c.Start(context.Background(), Spec{Name: "bench-exec"})
 	require.NoError(b, err)
 	defer c.Close()
 
