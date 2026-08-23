@@ -19,7 +19,7 @@
 ## P2 — 质量与可维护性（进行中）
 - [x] 消除 state.go 重复的状态转换映射
 - [x] 统一错误包装与错误码定义
-- [ ] 为公共函数添加 godoc 注释
+- [x] 为公共函数添加 godoc 注释（英文）
 - [x] 提取魔法数字为常量（stateRunning/stateStopped/stateFatalBwrap/defaultStrategyName/customStrategyName 等）
 - [ ] 审查并简化 buildArgs 逻辑
 - [x] 补充 agent 状态机测试
@@ -27,7 +27,7 @@
 - [x] 添加 network 集成测试
 - [ ] 提高整体覆盖率至 80%+
 
-## P3 — 可观测性与边缘特性（待开始）
+## P3 — 可观测性与边缘特性（进行中）
 - [x] 添加 Prometheus 更多指标
 - [ ] 文档：API 参考、示例脚本
 - [ ] 性能基准测试与优化（二进制大小 ≤20MB、启动耗时 ≤0.5s）
