@@ -15,6 +15,8 @@ type LogStrategy interface {
 	Configure(spec ContainerSpec) ([]string, error)
 }
 
+const defaultStrategyName = "default"
+
 // DefaultLogStrategy 默认日志策略
 type DefaultLogStrategy struct {
 	logger log.Logger
@@ -30,7 +32,7 @@ func NewDefaultLogStrategy(logger log.Logger) *DefaultLogStrategy {
 
 // Name 返回策略名称
 func (s *DefaultLogStrategy) Name() string {
-	return "default"
+	return defaultStrategyName
 }
 
 // Configure 配置容器日志
@@ -47,7 +49,7 @@ func (s *DefaultLogStrategy) Configure(spec ContainerSpec) ([]string, error) {
 // NewLogStrategy 创建日志策略
 func NewLogStrategy(name string, logger log.Logger) (LogStrategy, error) {
 	switch name {
-	case "", "default":
+	case "", defaultStrategyName:
 		return NewDefaultLogStrategy(logger), nil
 	default:
 		return nil, fmt.Errorf("unknown log strategy: %s", name)

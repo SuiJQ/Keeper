@@ -30,7 +30,7 @@ func NewDefaultNetworkStrategy(logger log.Logger) *DefaultNetworkStrategy {
 
 // Name 返回策略名称
 func (s *DefaultNetworkStrategy) Name() string {
-	return "default"
+	return defaultStrategyName
 }
 
 // Configure 配置容器网络
@@ -50,7 +50,7 @@ func (s *DefaultNetworkStrategy) Configure(spec ContainerSpec) ([]string, error)
 // NewNetworkStrategy 创建网络策略
 func NewNetworkStrategy(name string, logger log.Logger) (NetworkStrategy, error) {
 	switch name {
-	case "", "default":
+	case "", defaultStrategyName:
 		return NewDefaultNetworkStrategy(logger), nil
 	default:
 		return nil, fmt.Errorf("unknown network strategy: %s", name)

@@ -30,7 +30,7 @@ func NewDefaultResourceStrategy(logger log.Logger) *DefaultResourceStrategy {
 
 // Name 返回策略名称
 func (s *DefaultResourceStrategy) Name() string {
-	return "default"
+	return defaultStrategyName
 }
 
 // Configure 配置容器资源限制
@@ -48,7 +48,7 @@ func (s *DefaultResourceStrategy) Configure(spec ContainerSpec) ([]string, error
 // NewResourceStrategy 创建资源限制策略
 func NewResourceStrategy(name string, logger log.Logger) (ResourceStrategy, error) {
 	switch name {
-	case "", "default":
+	case "", defaultStrategyName:
 		return NewDefaultResourceStrategy(logger), nil
 	default:
 		return nil, fmt.Errorf("unknown resource strategy: %s", name)

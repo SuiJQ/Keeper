@@ -20,6 +20,8 @@ import (
 	"keeper/pkg/config"
 )
 
+const stateStopped = "stopped"
+
 // BwrapContainer bwrap 容器运行时实现
 type BwrapContainer struct {
 	name          string
@@ -207,7 +209,7 @@ func (c *BwrapContainer) Stop(ctx context.Context, grace time.Duration) error {
 		if err := c.cmd.Process.Kill(); err != nil {
 			c.logger.Error("error killing container", log.Field{Key: "error", Value: err.Error()})
 			RecordContainerStop("bwrap", "error")
-			c.status.State = "stopped"
+			c.status.State = stateStopped
 			c.status.PID = 0
 			c.status.PGID = 0
 			return fmt.Errorf("kill container: %w", err)
@@ -219,7 +221,7 @@ func (c *BwrapContainer) Stop(ctx context.Context, grace time.Duration) error {
 		}
 	}
 
-	c.status.State = "stopped"
+	c.status.State = stateStopped
 	c.status.PID = 0
 	c.status.PGID = 0
 
@@ -335,7 +337,7 @@ func (c *BwrapContainer) Status(ctx context.Context) (*ContainerStatus, error) {
 	// 检查进程是否还在运行
 	err := c.cmd.Process.Signal(syscall.Signal(0))
 	if err != nil {
-		c.status.State = "stopped"
+		c.status.State = stateStopped
 		c.status.PID = 0
 		c.status.PGID = 0
 		c.logger.Warn("container process not found", log.Field{Key: "pid", Value: c.cmd.Process.Pid})

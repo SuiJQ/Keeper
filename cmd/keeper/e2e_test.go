@@ -578,7 +578,7 @@ func TestAgentRunEndToEnd(t *testing.T) {
 	require.NoError(t, err)
 
 	// 如果 Agent 处于 running 状态，run 应该返回错误
-	if meta.State == "running" {
+	if meta.State == stateRunning {
 		err = runAgentCommand(cfg, []string{agentName})
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "cannot run agent in state: running")

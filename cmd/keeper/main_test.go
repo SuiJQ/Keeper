@@ -217,7 +217,7 @@ func TestRecoverAgent(t *testing.T) {
 	// 模拟 agent 处于错误状态
 	store, _ := storage.NewStore(cfg.Home)
 	meta, _ := store.GetAgent(context.Background(), "test-agent")
-	meta.State = "fatal_bwrap_exec"
+	meta.State = stateFatalBwrap
 	meta.PID = cmd.Process.Pid
 	meta.Error = "test error"
 	_ = store.UpdateAgent(context.Background(), meta)
@@ -251,7 +251,7 @@ func TestStopAgent(t *testing.T) {
 	// 模拟 agent 处于 running 状态
 	store, _ := storage.NewStore(cfg.Home)
 	meta, _ := store.GetAgent(context.Background(), "test-agent")
-	meta.State = "running"
+	meta.State = stateRunning
 	meta.PID = os.Getpid()
 	_ = store.UpdateAgent(context.Background(), meta)
 
@@ -439,7 +439,7 @@ func TestStartStopStatusRecover(t *testing.T) {
 		// 如果启动成功，验证状态
 		meta, err = store.GetAgent(context.Background(), "test-agent")
 		require.NoError(t, err)
-		assert.Equal(t, "running", meta.State)
+		assert.Equal(t, stateRunning, meta.State)
 	}
 
 	// 状态查询
@@ -457,13 +457,13 @@ func TestStartStopStatusRecover(t *testing.T) {
 	output := buf.String()
 	// 状态可能是 running 或 fatal，取决于环境
 	assert.Contains(t, output, "Agent 'test-agent':")
-	if meta.State == "running" {
+	if meta.State == stateRunning {
 		assert.Contains(t, output, "PID:")
 	}
 
 	// 尝试停止（如果 agent 在 running 状态）
 	meta, _ = store.GetAgent(context.Background(), "test-agent")
-	if meta.State == "running" {
+	if meta.State == stateRunning {
 		_, w, _ = os.Pipe()
 		os.Stdout = w
 
@@ -769,7 +769,7 @@ func TestStartAgentAlreadyRunning(t *testing.T) {
 	// 设置状态为 running
 	store, _ := storage.NewStore(cfg.Home)
 	meta, _ := store.GetAgent(context.Background(), "test-agent")
-	meta.State = "running"
+	meta.State = stateRunning
 	meta.PID = os.Getpid()
 	_ = store.UpdateAgent(context.Background(), meta)
 
@@ -842,7 +842,7 @@ func TestStartAgentInvalidState(t *testing.T) {
 	// 设置无效状态
 	store, _ := storage.NewStore(cfg.Home)
 	meta, _ := store.GetAgent(context.Background(), "test-agent")
-	meta.State = "fatal_bwrap_exec" // 无效状态
+	meta.State = stateFatalBwrap // 无效状态
 	_ = store.UpdateAgent(context.Background(), meta)
 
 	// 尝试启动应该失败
@@ -864,7 +864,7 @@ func TestStopAgentInvalidState(t *testing.T) {
 	// 设置无效状态
 	store, _ := storage.NewStore(cfg.Home)
 	meta, _ := store.GetAgent(context.Background(), "test-agent")
-	meta.State = "fatal_bwrap_exec" // 无效状态
+	meta.State = stateFatalBwrap // 无效状态
 	_ = store.UpdateAgent(context.Background(), meta)
 
 	// 尝试停止应该失败

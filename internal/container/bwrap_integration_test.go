@@ -17,6 +17,8 @@ import (
 	"keeper/internal/log"
 )
 
+const customStrategyName = "custom"
+
 // isBwrapSupported 检查当前环境是否支持 bwrap
 func isBwrapSupported() bool {
 	result := bootstrap.ProbeEnvironment()
@@ -686,7 +688,7 @@ type CustomNetworkStrategy struct {
 	nameservers []string
 }
 
-func (s *CustomNetworkStrategy) Name() string { return "custom" }
+func (s *CustomNetworkStrategy) Name() string { return customStrategyName }
 func (s *CustomNetworkStrategy) Configure(spec ContainerSpec) ([]string, error) {
 	args := []string{}
 	for _, ns := range s.nameservers {
@@ -700,7 +702,7 @@ type CustomResourceStrategy struct {
 	shmSize uint32
 }
 
-func (s *CustomResourceStrategy) Name() string { return "custom" }
+func (s *CustomResourceStrategy) Name() string { return customStrategyName }
 func (s *CustomResourceStrategy) Configure(spec ContainerSpec) ([]string, error) {
 	return []string{fmt.Sprintf("--shm-size=%dm", s.shmSize)}, nil
 }
@@ -710,7 +712,7 @@ type CustomLogStrategy struct {
 	level string
 }
 
-func (s *CustomLogStrategy) Name() string { return "custom" }
+func (s *CustomLogStrategy) Name() string { return customStrategyName }
 func (s *CustomLogStrategy) Configure(spec ContainerSpec) ([]string, error) {
 	return []string{"--log-level=" + s.level}, nil
 }

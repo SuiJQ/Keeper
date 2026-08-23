@@ -39,7 +39,7 @@ func (b *OverlayBuilder) BuildArgs(lower, upper, work, mountPoint string) []stri
 
 // Name 返回策略名称
 func (b *OverlayBuilder) Name() string {
-	return "default"
+	return defaultStrategyName
 }
 
 // OverlayFSStrategy OverlayFS 挂载策略
@@ -66,7 +66,7 @@ func (o *OverlayFSStrategy) Name() string {
 // NewOverlayStrategy 根据配置创建 Overlay 策略
 func NewOverlayStrategy(name string, logger log.Logger) (OverlayStrategy, error) {
 	switch name {
-	case "default", "":
+	case defaultStrategyName, "":
 		return NewOverlayBuilder(logger), nil
 	case "overlayfs":
 		return &OverlayFSStrategy{logger: logger}, nil

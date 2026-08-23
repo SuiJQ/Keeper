@@ -20,7 +20,7 @@
 - [x] 消除 state.go 重复的状态转换映射
 - [x] 统一错误包装与错误码定义
 - [ ] 为公共函数添加 godoc 注释
-- [x] 提取魔法数字为常量（main.go state 常量已提取）
+- [x] 提取魔法数字为常量（stateRunning/stateStopped/stateFatalBwrap/defaultStrategyName/customStrategyName 等）
 - [ ] 审查并简化 buildArgs 逻辑
 - [x] 补充 agent 状态机测试
 - [x] 补充 config 热重载测试
