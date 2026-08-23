@@ -9,10 +9,14 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"keeper/internal/container"
+	"keeper/internal/log"
+	"keeper/internal/mcp"
 	"keeper/internal/metrics"
 	"keeper/internal/storage"
+	"keeper/internal/watchdog"
 	"keeper/pkg/config"
 
 	"github.com/stretchr/testify/assert"
@@ -1115,4 +1119,278 @@ func TestInspectAgentVerbose(t *testing.T) {
 	assert.Contains(t, output, "NAME:       verbose-agent")
 	assert.Contains(t, output, "DEVICE INFO:")
 	assert.Contains(t, output, "Rootfs Device ID:")
+}
+
+// TestRouteCommandMetrics 测试 routeCommand metrics 分支
+func TestRouteCommandMetrics(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	// 记录一些指标，保证 metrics 命令有内容
+	container.RecordContainerStart("mock", "success")
+	container.SetContainerActive("mock", 1)
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err = routeCommand(cfg, "metrics", nil)
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	require.NoError(t, err)
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+	assert.Contains(t, output, "# HELP")
+	assert.Contains(t, output, "keeper_container_start_total")
+}
+
+// TestParseCLINormal 测试 parseCLI 正常参数解析
+func TestParseCLINormal(t *testing.T) {
+	os.Args = []string{"keeper", "create", "my-agent"}
+	command, args, err := parseCLI()
+	require.NoError(t, err)
+	assert.Equal(t, "create", command)
+	assert.Equal(t, []string{"my-agent"}, args)
+}
+
+// TestStatusAgentRunning 测试 statusAgent running 输出
+func TestStatusAgentRunning(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	require.NoError(t, createAgent(cfg, []string{"status-run-agent"}))
+
+	store, _ := storage.NewStore(cfg.Home)
+	meta, _ := store.GetAgent(context.Background(), "status-run-agent")
+	meta.State = stateRunning
+	meta.PID = os.Getpid()
+	meta.PGID = fmt.Sprintf("%d", os.Getpid())
+	meta.StartedAt = time.Now().UTC().Format(time.RFC3339)
+	_ = store.UpdateAgent(context.Background(), meta)
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err = statusAgent(cfg, []string{"status-run-agent"})
+
+	w.Close()
+	os.Stdout = oldStdout
+	require.NoError(t, err)
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+	assert.Contains(t, output, "Agent 'status-run-agent': running")
+	assert.Contains(t, output, fmt.Sprintf("PID: %d", os.Getpid()))
+	assert.Contains(t, output, "Started:")
+}
+
+// TestStatusAgentStopped 测试 statusAgent stopped 输出
+func TestStatusAgentStopped(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	require.NoError(t, createAgent(cfg, []string{"status-stop-agent"}))
+
+	store, _ := storage.NewStore(cfg.Home)
+	meta, _ := store.GetAgent(context.Background(), "status-stop-agent")
+	meta.State = stateStopped
+	meta.StoppedAt = time.Now().UTC().Format(time.RFC3339)
+	_ = store.UpdateAgent(context.Background(), meta)
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err = statusAgent(cfg, []string{"status-stop-agent"})
+
+	w.Close()
+	os.Stdout = oldStdout
+	require.NoError(t, err)
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+	assert.Contains(t, output, "Agent 'status-stop-agent': stopped")
+	assert.Contains(t, output, "Stopped:")
+}
+
+// TestEnsureRunningAgentCreate 测试 ensureRunningAgent 不存在时自动创建
+func TestEnsureRunningAgentCreate(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	store, err := storage.NewStore(cfg.Home)
+	require.NoError(t, err)
+
+	// Agent 不存在，ensureRunningAgent 应自动创建
+	// 新创建的 agent 状态为 created，ensureRunningAgent 不会自动启动
+	// 因此应返回 "cannot run agent in state: created" 错误
+	_, err = ensureRunningAgent(cfg, store, "ensure-create-agent")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot run agent in state: created")
+}
+
+// TestEnsureRunningAgentStart 测试 ensureRunningAgent stopped 时自动启动
+func TestEnsureRunningAgentStart(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	require.NoError(t, createAgent(cfg, []string{"ensure-start-agent"}))
+
+	store, _ := storage.NewStore(cfg.Home)
+	meta, _ := store.GetAgent(context.Background(), "ensure-start-agent")
+	meta.State = stateStopped
+	_ = store.UpdateAgent(context.Background(), meta)
+
+	// stopped 状态的 agent 应被自动启动
+	// 当前环境可能因 bwrap 不可用进入 fatal，或成功 running
+	meta, err = ensureRunningAgent(cfg, store, "ensure-start-agent")
+	if err != nil {
+		assert.Contains(t, err.Error(), "start agent")
+	} else {
+		assert.Contains(t, []string{stateRunning, stateFatalBwrap}, meta.State)
+	}
+}
+
+// TestEnsureRunningAgentInvalidState 测试 ensureRunningAgent 非法状态
+func TestEnsureRunningAgentInvalidState(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	require.NoError(t, createAgent(cfg, []string{"ensure-invalid-agent"}))
+
+	store, _ := storage.NewStore(cfg.Home)
+	meta, _ := store.GetAgent(context.Background(), "ensure-invalid-agent")
+	meta.State = stateFatalBwrap
+	_ = store.UpdateAgent(context.Background(), meta)
+
+	_, err = ensureRunningAgent(cfg, store, "ensure-invalid-agent")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot run agent in state: fatal_bwrap_exec")
+}
+
+// TestRunAgentCommandInvalidState2 测试 runAgentCommand 非法状态
+func TestRunAgentCommandInvalidState2(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	require.NoError(t, createAgent(cfg, []string{"run-invalid-agent"}))
+
+	store, _ := storage.NewStore(cfg.Home)
+	meta, _ := store.GetAgent(context.Background(), "run-invalid-agent")
+	meta.State = stateFatalBwrap
+	_ = store.UpdateAgent(context.Background(), meta)
+
+	err = runAgentCommand(cfg, []string{"run-invalid-agent"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot run agent in state: fatal_bwrap_exec")
+}
+
+// TestStartAgentMetricsDisabled 测试 metrics 禁用时 startAgentMetrics 提前返回
+func TestStartAgentMetricsDisabled(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	cfg.MetricsEnabled = false
+	cfg.MetricsListenAddr = "127.0.0.1:0"
+
+	mcpServer, err := mcp.NewServer(mcp.ServerConfig{
+		SocketPath:  filepath.Join(cfg.Home, "agents", "metrics-disabled-agent", "mcp.sock"),
+		AgentName:   "metrics-disabled-agent",
+		AllowedUIDs: cfg.MCPAllowedUIDs,
+		AllowedGIDs: cfg.MCPAllowedGIDs,
+	}, log.Global())
+	require.NoError(t, err)
+
+	wd := watchdog.NewWatchdog(watchdog.Config{
+		Timeout:       30 * time.Second,
+		CheckInterval: 5 * time.Second,
+	}, log.Global())
+
+	err = startAgentMetrics(cfg, mcpServer, wd)
+	assert.NoError(t, err)
+}
+
+// TestStartAgentMetricsEnabled 测试 metrics 启用时 startAgentMetrics 启动服务
+func TestStartAgentMetricsEnabled(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	cfg.MetricsEnabled = true
+	cfg.MetricsListenAddr = "127.0.0.1:0"
+
+	mcpServer, err := mcp.NewServer(mcp.ServerConfig{
+		SocketPath:  filepath.Join(cfg.Home, "agents", "metrics-enabled-agent", "mcp.sock"),
+		AgentName:   "metrics-enabled-agent",
+		AllowedUIDs: cfg.MCPAllowedUIDs,
+		AllowedGIDs: cfg.MCPAllowedGIDs,
+	}, log.Global())
+	require.NoError(t, err)
+
+	wd := watchdog.NewWatchdog(watchdog.Config{
+		Timeout:       30 * time.Second,
+		CheckInterval: 5 * time.Second,
+	}, log.Global())
+
+	err = startAgentMetrics(cfg, mcpServer, wd)
+	assert.NoError(t, err)
+}
+
+// TestBuildRunContextReuse 测试 buildRunContext 复用已注册容器
+func TestBuildRunContextReuse(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	require.NoError(t, createAgent(cfg, []string{"reuse-agent"}))
+
+	factory := container.NewBwrapFactory()
+	mockC, err := factory.Create("reuse-agent")
+	require.NoError(t, err)
+	container.Register("reuse-agent", mockC)
+	defer container.Unregister("reuse-agent")
+
+	logger := log.Global()
+	runCtx, err := buildRunContext(cfg, "reuse-agent", logger)
+	require.NoError(t, err)
+	assert.Equal(t, mockC, runCtx.Container)
+	assert.False(t, runCtx.ownsContainer)
+	assert.NotNil(t, runCtx.MCP)
+	assert.NotNil(t, runCtx.Watchdog)
+
+	runCtx.Close()
 }

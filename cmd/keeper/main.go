@@ -148,155 +148,206 @@ func createAgent(cfg *config.Config, args []string) error {
 }
 
 func startAgent(cfg *config.Config, args []string) error {
-	if len(args) < 1 {
-		return fmt.Errorf("usage: keeper start <name>")
+	name, err := requireAgentName(args, "start")
+	if err != nil {
+		return err
 	}
+	return startAgentByName(cfg, name)
+}
 
-	name := args[0]
+func stopAgent(cfg *config.Config, args []string) error {
+	name, err := requireAgentName(args, "stop")
+	if err != nil {
+		return err
+	}
+	return stopAgentByName(cfg, name)
+}
+
+func requireAgentName(args []string, verb string) (string, error) {
+	if len(args) < 1 {
+		return "", fmt.Errorf("usage: keeper %s <name>", verb)
+	}
+	return args[0], nil
+}
+
+func withAgentStore(cfg *config.Config) (storage.Store, error) {
+	return storage.NewStore(cfg.Home)
+}
+
+func startAgentByName(cfg *config.Config, name string) error {
 	logger := globalLogger.WithFields(log.Field{Key: "agent_name", Value: name})
 	logger.Info("starting agent")
 
-	store, err := storage.NewStore(cfg.Home)
+	store, err := withAgentStore(cfg)
 	if err != nil {
 		return fmt.Errorf("create store: %w", err)
 	}
 
-	// 加载 agent 元数据
-	meta, err := store.GetAgent(context.Background(), name)
+	meta, err := loadAgentMetaForStart(store, name)
 	if err != nil {
-		return fmt.Errorf("load agent: %w", err)
+		return err
 	}
-
-	// 检查当前状态
-	if meta.State == stateRunning {
+	if meta == nil {
 		logger.Info("agent already running")
 		fmt.Printf("Agent '%s' is already running\n", name)
 		return nil
 	}
 
-	// 从 created 或 stopped 状态启动
-	if meta.State == "created" || meta.State == stateStopped {
-		// 创建容器运行时
-		factory := container.NewBwrapFactory()
-		c, err := factory.Create(name)
-		if err != nil {
-			return fmt.Errorf("create container: %w", err)
-		}
-		defer func() { _ = c.Close() }()
-
-		// 构建容器规格
-		spec := container.Spec{
-			Name:      name,
-			Rootfs:    meta.RootfsDir,
-			UpperDir:  meta.UpperDir,
-			WorkDir:   meta.WorkDir,
-			Workspace: meta.Workspace,
-			ShmSize:   meta.ShmSizeMB,
-			Envvars:   []string{fmt.Sprintf("AGENT_NAME=%s", name)},
-		}
-
-		// 启动容器
-		pid, err := c.Start(context.Background(), spec)
-		if err != nil {
-			// 更新状态为 fatal
-			meta.State = stateFatalBwrap
-			meta.Error = err.Error()
-			_ = store.UpdateAgent(context.Background(), meta)
-			return fmt.Errorf("start container: %w", err)
-		}
-
-		// 更新状态
-		meta.State = stateRunning
-		meta.PID = pid
-		meta.PGID = fmt.Sprintf("%d", pid)
-		meta.StartedAt = time.Now().UTC().Format(time.RFC3339)
-		meta.Error = ""
-
-		if err := store.UpdateAgent(context.Background(), meta); err != nil {
-			return fmt.Errorf("update agent state: %w", err)
-		}
-
-		logger.Info("agent started", log.Field{Key: "state", Value: meta.State}, log.Field{Key: "pid", Value: pid})
-		fmt.Printf("Agent '%s' started (pid: %d)\n", name, pid)
-		return nil
-	}
-
-	// 其他状态不允许直接启动
-	return fmt.Errorf("cannot start agent in state: %s", meta.State)
+	return startAgentContainer(store, name, meta, logger)
 }
 
-func stopAgent(cfg *config.Config, args []string) error {
-	if len(args) < 1 {
-		return fmt.Errorf("usage: keeper stop <name>")
-	}
-
-	name := args[0]
-	logger := globalLogger.WithFields(log.Field{Key: "agent_name", Value: name})
-	logger.Info("stopping agent")
-
-	store, err := storage.NewStore(cfg.Home)
-	if err != nil {
-		return fmt.Errorf("create store: %w", err)
-	}
-
-	// 加载 agent 元数据
+func loadAgentMetaForStart(store storage.Store, name string) (*storage.AgentMeta, error) {
 	meta, err := store.GetAgent(context.Background(), name)
 	if err != nil {
-		return fmt.Errorf("load agent: %w", err)
+		return nil, fmt.Errorf("load agent: %w", err)
+	}
+	if meta.State == stateRunning {
+		return nil, nil
+	}
+	return meta, nil
+}
+
+func startAgentContainer(store storage.Store, name string, meta *storage.AgentMeta, logger log.Logger) error {
+	if meta.State != "created" && meta.State != stateStopped {
+		return fmt.Errorf("cannot start agent in state: %s", meta.State)
 	}
 
-	// 检查当前状态
-	if meta.State == stateStopped {
-		logger.Info("agent already stopped")
-		fmt.Printf("Agent '%s' is already stopped\n", name)
-		return nil
-	}
-
-	if meta.State != stateRunning {
-		return fmt.Errorf("cannot stop agent in state: %s", meta.State)
-	}
-
-	// 创建容器运行时
 	factory := container.NewBwrapFactory()
 	c, err := factory.Create(name)
 	if err != nil {
 		return fmt.Errorf("create container: %w", err)
 	}
-	defer func() { _ = c.Close() }()
 
-	// 根据配置设置策略
-	if bc, ok := c.(*container.BwrapContainer); ok {
-		if seccompStrat, err := container.NewSeccompStrategy(cfg.SeccompStrategy, logger); err != nil {
-			logger.Warn("invalid seccomp strategy, using default", log.Field{Key: "error", Value: err.Error()})
-		} else {
-			bc.SetSeccompStrategy(seccompStrat)
-		}
-		if overlayStrat, err := container.NewOverlayStrategy(cfg.OverlayStrategy, logger); err != nil {
-			logger.Warn("invalid overlay strategy, using default", log.Field{Key: "error", Value: err.Error()})
-		} else {
-			bc.SetOverlayStrategy(overlayStrat)
-		}
+	spec := buildAgentContainerSpec(meta, name)
+	pid, err := c.Start(context.Background(), spec)
+	if err != nil {
+		_ = c.Close()
+		meta.State = stateFatalBwrap
+		meta.Error = err.Error()
+		_ = store.UpdateAgent(context.Background(), meta)
+		return fmt.Errorf("start container: %w", err)
 	}
 
-	// 停止容器
+	container.Register(name, c)
+	updateAgentRunningMeta(meta, pid)
+
+	if err := store.UpdateAgent(context.Background(), meta); err != nil {
+		container.Unregister(name)
+		_ = c.Close()
+		return fmt.Errorf("update agent state: %w", err)
+	}
+
+	logger.Info("agent started", log.Field{Key: "state", Value: meta.State}, log.Field{Key: "pid", Value: pid})
+	fmt.Printf("Agent '%s' started (pid: %d)\n", name, pid)
+	return nil
+}
+
+func buildAgentContainerSpec(meta *storage.AgentMeta, name string) container.Spec {
+	return container.Spec{
+		Name:      name,
+		Rootfs:    meta.RootfsDir,
+		UpperDir:  meta.UpperDir,
+		WorkDir:   meta.WorkDir,
+		Workspace: meta.Workspace,
+		ShmSize:   meta.ShmSizeMB,
+		Envvars:   []string{fmt.Sprintf("AGENT_NAME=%s", name)},
+	}
+}
+
+func updateAgentRunningMeta(meta *storage.AgentMeta, pid int) {
+	meta.State = stateRunning
+	meta.PID = pid
+	meta.PGID = fmt.Sprintf("%d", pid)
+	meta.StartedAt = time.Now().UTC().Format(time.RFC3339)
+	meta.Error = ""
+}
+
+func stopAgentByName(cfg *config.Config, name string) error {
+	logger := globalLogger.WithFields(log.Field{Key: "agent_name", Value: name})
+	logger.Info("stopping agent")
+
+	store, err := withAgentStore(cfg)
+	if err != nil {
+		return fmt.Errorf("create store: %w", err)
+	}
+
+	meta, err := loadAgentMetaForStop(store, name)
+	if err != nil {
+		return err
+	}
+	if meta == nil {
+		logger.Info("agent already stopped")
+		fmt.Printf("Agent '%s' is already stopped\n", name)
+		return nil
+	}
+
+	return stopAgentContainer(cfg, store, name, meta, logger)
+}
+
+func loadAgentMetaForStop(store storage.Store, name string) (*storage.AgentMeta, error) {
+	meta, err := store.GetAgent(context.Background(), name)
+	if err != nil {
+		return nil, fmt.Errorf("load agent: %w", err)
+	}
+	if meta.State == stateStopped {
+		return nil, nil
+	}
+	if meta.State != stateRunning {
+		return nil, fmt.Errorf("cannot stop agent in state: %s", meta.State)
+	}
+	return meta, nil
+}
+
+func stopAgentContainer(cfg *config.Config, store storage.Store, name string, meta *storage.AgentMeta, logger log.Logger) error {
+	c := getContainerForStop(name)
+
+	applyStopContainerStrategies(c, cfg, logger)
+
 	grace := 5 * time.Second
 	if err := c.Stop(context.Background(), grace); err != nil {
 		logger.Warn("stop container error", log.Field{Key: "error", Value: err})
 	}
 
-	// 更新状态
-	meta.State = stateStopped
-	meta.StoppedAt = time.Now().UTC().Format(time.RFC3339)
-	meta.PID = 0
-	meta.PGID = ""
-
-	if err := store.UpdateAgent(context.Background(), meta); err != nil {
-		return fmt.Errorf("update agent state: %w", err)
-	}
+	container.Unregister(name)
+	finalizeAgentStop(store, meta)
 
 	logger.Info("agent stopped", log.Field{Key: "state", Value: meta.State})
 	fmt.Printf("Agent '%s' stopped\n", name)
 	return nil
+}
+
+func getContainerForStop(name string) container.Container {
+	c, registered := container.Get(name)
+	if !registered {
+		factory := container.NewBwrapFactory()
+		c, _ = factory.Create(name)
+	}
+	return c
+}
+
+func applyStopContainerStrategies(c container.Container, cfg *config.Config, logger log.Logger) {
+	bc, ok := c.(*container.BwrapContainer)
+	if !ok {
+		return
+	}
+	if seccompStrat, err := container.NewSeccompStrategy(cfg.SeccompStrategy, logger); err != nil {
+		logger.Warn("invalid seccomp strategy, using default", log.Field{Key: "error", Value: err.Error()})
+	} else {
+		bc.SetSeccompStrategy(seccompStrat)
+	}
+	if overlayStrat, err := container.NewOverlayStrategy(cfg.OverlayStrategy, logger); err != nil {
+		logger.Warn("invalid overlay strategy, using default", log.Field{Key: "error", Value: err.Error()})
+	} else {
+		bc.SetOverlayStrategy(overlayStrat)
+	}
+}
+
+func finalizeAgentStop(store storage.Store, meta *storage.AgentMeta) {
+	meta.State = stateStopped
+	meta.StoppedAt = time.Now().UTC().Format(time.RFC3339)
+	meta.PID = 0
+	meta.PGID = ""
+	_ = store.UpdateAgent(context.Background(), meta)
 }
 
 func runAgentCommand(cfg *config.Config, args []string) error {
@@ -340,16 +391,19 @@ func runAgentCommand(cfg *config.Config, args []string) error {
 }
 
 type agentRunContext struct {
-	Container container.Container
-	MCP       *mcp.Server
-	Watchdog  *watchdog.Watchdog
+	Container     container.Container
+	MCP           *mcp.Server
+	Watchdog      *watchdog.Watchdog
+	ownsContainer bool
 }
 
 func (r *agentRunContext) Close() {
 	if r == nil {
 		return
 	}
-	_ = r.Container.Close()
+	if r.ownsContainer && r.Container != nil {
+		_ = r.Container.Close()
+	}
 }
 
 func (r *agentRunContext) Start(ctx context.Context) error {
@@ -363,9 +417,18 @@ func (r *agentRunContext) Start(ctx context.Context) error {
 }
 
 func buildRunContext(cfg *config.Config, name string, logger log.Logger) (*agentRunContext, error) {
-	c, err := createAgentContainer(name)
-	if err != nil {
-		return nil, err
+	var c container.Container
+	var ownsContainer bool
+
+	if registered, ok := container.Get(name); ok {
+		c = registered
+	} else {
+		var err error
+		c, err = createAgentContainer(name)
+		if err != nil {
+			return nil, err
+		}
+		ownsContainer = true
 	}
 
 	if bc, ok := c.(*container.BwrapContainer); ok {
@@ -374,21 +437,26 @@ func buildRunContext(cfg *config.Config, name string, logger log.Logger) (*agent
 
 	mcpServer, err := createAgentMCPServer(cfg, name, logger)
 	if err != nil {
-		_ = c.Close()
+		if ownsContainer {
+			_ = c.Close()
+		}
 		return nil, err
 	}
 
 	wd, err := createAgentWatchdog(cfg, logger)
 	if err != nil {
 		_ = mcpServer.Stop()
-		_ = c.Close()
+		if ownsContainer {
+			_ = c.Close()
+		}
 		return nil, err
 	}
 
 	return &agentRunContext{
-		Container: c,
-		MCP:       mcpServer,
-		Watchdog:  wd,
+		Container:     c,
+		MCP:           mcpServer,
+		Watchdog:      wd,
+		ownsContainer: ownsContainer,
 	}, nil
 }
 
@@ -549,9 +617,10 @@ func waitForAgentShutdown(cfg *config.Config, logger log.Logger, mcpServer *mcp.
 func ensureRunningAgent(cfg *config.Config, store storage.Store, name string) (*storage.AgentMeta, error) {
 	meta, err := store.GetAgent(context.Background(), name)
 	if err != nil {
-		return nil, fmt.Errorf("load agent: %w", err)
-	}
-	if meta == nil {
+		if !strings.Contains(err.Error(), "not found") {
+			return nil, fmt.Errorf("load agent: %w", err)
+		}
+		// Agent not found, create it
 		if err := createAgent(cfg, []string{name}); err != nil {
 			return nil, fmt.Errorf("create agent: %w", err)
 		}
