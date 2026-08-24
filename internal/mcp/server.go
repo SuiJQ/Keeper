@@ -126,7 +126,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 	RecordMCPConnection("success")
 
-	go s.acceptLoop(ctx)
+	go s.acceptLoop(ctx, listener)
 
 	return nil
 }
@@ -170,15 +170,15 @@ func (s *Server) IsRunning() bool {
 }
 
 // acceptLoop 接受连接循环
-func (s *Server) acceptLoop(ctx context.Context) {
+func (s *Server) acceptLoop(ctx context.Context, listener net.Listener) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		default:
-			conn, err := s.listener.Accept()
+			conn, err := listener.Accept()
 			if err != nil {
-				if s.running {
+				if s.IsRunning() {
 					s.logger.Error("accept error", log.Field{Key: "error", Value: err.Error()})
 				}
 				continue
