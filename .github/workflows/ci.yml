@@ -48,7 +48,7 @@ jobs:
           echo "Verifying default container runtime is Docker..."
           # Ensure dependencies are available
           go mod download
-          # Verify default config programmatically
+          # Verify default config programmatically with debug output
           go run -mod=mod - <<'EOF'
           package main
           import (
@@ -63,6 +63,7 @@ jobs:
               fmt.Println("ERROR: default container runtime is not docker")
               os.Exit(1)
             }
+            fmt.Println("SUCCESS: default runtime is docker")
           }
           EOF
 
@@ -336,10 +337,13 @@ jobs:
 
       - name: Verify default runtime is Docker
         run: |
+          echo "Verifying default container runtime is Docker..."
+          go mod download
           go run -mod=mod - <<'EOF'
           package main
           import (
             "fmt"
+            "os"
             "keeper/pkg/config"
           )
           func main() {
@@ -347,8 +351,9 @@ jobs:
             fmt.Printf("Default container runtime: %s\n", cfg.ContainerRuntime)
             if cfg.ContainerRuntime != "docker" {
               fmt.Println("ERROR: default container runtime is not docker")
-              panic("default runtime gate failed")
+              os.Exit(1)
             }
+            fmt.Println("SUCCESS: default runtime is docker")
           }
           EOF
 
