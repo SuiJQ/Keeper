@@ -2934,6 +2934,7 @@ func TestBuildRunContextSuccess(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, r)
 }
+
 // TestKillProcessSuccess 测试 killProcess 成功终止进程
 func TestKillProcessSuccess(t *testing.T) {
 	// 创建一个子进程，它会持续运行直到被杀死
@@ -3139,6 +3140,7 @@ func TestRunCommandInvalid(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown command")
 }
+
 // TestRunNoCommand 测试 run 函数无命令参数
 func TestRunNoCommand(t *testing.T) {
 	tmpDir, cleanup := setupTestConfig(t)
@@ -3217,6 +3219,7 @@ func TestRunListCommand(t *testing.T) {
 	output := buf.String()
 	assert.Contains(t, output, "list-test-agent")
 }
+
 // TestCopyFileToPathNonExistentSource 测试 copyFileToPath 源文件不存在
 func TestCopyFileToPathNonExistentSource(t *testing.T) {
 	tmpDir, cleanup := setupTestConfig(t)
