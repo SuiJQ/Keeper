@@ -1,3 +1,32 @@
+/*
+Package container 提供 bwrap/Mock 双容器运行时实现。
+
+bwrap 集成测试策略说明
+======================
+
+为什么真实 bwrap 集成测试会被跳过
+- 完整 bwrap 生命周期依赖内核配置 CONFIG_OVERLAY_FS_USERNS=y。
+- 当前 GitHub-hosted runner（Ubuntu 24.04）、本地环境（5.10.134）以及常见标准发行版镜像均未开启该配置，导致 bwrap 完整生命周期无法在这些环境自动验证。
+- 因此本文件的真实 bwrap 测试会在环境不支持时条件跳过，避免 CI 因环境差异而误报失败。
+
+哪些逻辑由 MockContainer 覆盖
+- 状态机流转：created -> running -> stopped
+- 重复启动/停止的幂等性检查
+- Exec 调用记录与错误注入
+- 生命周期事件顺序验证
+
+哪些行为需要真实环境/自托管 runner 验证
+- bwrap 实际进程创建与 PID 分配
+- overlayfs + user namespace 的真实挂载与权限隔离
+- seccomp BPF 过滤在真实容器中的生效行为
+- 资源限制（shm_size、memory、cpu）的实际约束效果
+- 网络 namespace 与 port forwarding 的真实网络拓扑
+
+建议验证方式
+- 使用自托管 runner，并确保内核开启 CONFIG_OVERLAY_FS_USERNS=y
+- 或使用具备该内核配置的专用 VM/容器环境手动运行 bwrap 集成测试
+- 日常开发与 CI 以 Mock 覆盖状态机逻辑 + 条件跳过真实 bwrap 作为 pragmatic 方案
+*/
 package container
 
 import (

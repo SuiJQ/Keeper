@@ -72,6 +72,17 @@ func TestCreateAgentInvalidName(t *testing.T) {
 	}
 }
 
+// TestCreateAgentMissingName 覆盖 createAgent 缺少名称的错误路径
+func TestCreateAgentMissingName(t *testing.T) {
+	tmpDir, _ := setupTestConfig(t)
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	err = createAgent(cfg, []string{})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "usage: keeper create")
+}
+
 func TestDestroyAgent(t *testing.T) {
 	tmpDir, _ := setupTestConfig(t)
 	cfg, err := config.Load(tmpDir)
@@ -166,6 +177,34 @@ func TestForkAgent(t *testing.T) {
 	assert.Contains(t, string(data), `"state": "created"`)
 }
 
+// TestForkAgentErrors 覆盖 forkAgent 的错误路径
+func TestForkAgentErrors(t *testing.T) {
+	tmpDir, _ := setupTestConfig(t)
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	// 测试参数不足
+	err = forkAgent(cfg, []string{"source"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "usage: keeper fork")
+
+	// 测试无效的 agent 名（source）
+	err = forkAgent(cfg, []string{"-invalid", "target"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid agent name format")
+
+	// 测试无效的 agent 名（target）
+	err = forkAgent(cfg, []string{"source", "-invalid"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid agent name format")
+
+	// 测试 source 和 target 相同
+	err = forkAgent(cfg, []string{"same", "same"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "source and target must be different")
+}
+
+// TestCopyFile 测试 copyFile 函数
 func TestCopyFile(t *testing.T) {
 	tmpDir, _ := setupTestConfig(t)
 	cfg, err := config.Load(tmpDir)
@@ -2049,6 +2088,11 @@ func TestCopyFileErrors(t *testing.T) {
 	// 测试无效的 source 路径
 	err = copyFile(cfg, []string{"/nonexistent/source.txt", filepath.Join(tmpDir, "dest.txt")})
 	assert.Error(t, err)
+
+	// 测试 parseCopyArgs 错误（只有 -r 标志，没有 source 和 dst）
+	err = copyFile(cfg, []string{"-r", "-r"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "usage: keeper cp")
 }
 
 // TestCopyBetweenPathsErrors 覆盖 copyBetweenPaths 的错误路径
@@ -2100,6 +2144,20 @@ func TestListAgentsEmptyOutput(t *testing.T) {
 	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 	assert.Contains(t, output, "No agents found")
+}
+
+// TestListAgentsErrors 覆盖 listAgents 的错误路径
+func TestListAgentsErrors(t *testing.T) {
+	// 测试无效 home 路径（文件路径）导致的 NewStore 错误
+	homeFile := filepath.Join(t.TempDir(), "not-a-dir")
+	require.NoError(t, os.WriteFile(homeFile, []byte("not a directory"), 0644))
+
+	cfg := config.DefaultConfig()
+	cfg.Home = homeFile
+
+	err := listAgents(cfg, []string{})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "create store")
 }
 
 // TestStartAgentContainerFactoryError 覆盖 startAgentContainer 的 factory.Create 错误路径
@@ -2704,6 +2762,17 @@ func TestLoadConfigForCLIError(t *testing.T) {
 	assert.Error(t, err)
 }
 
+// TestLoadConfigForCLISuccess 覆盖 loadConfigForCLI 的成功路径
+func TestLoadConfigForCLISuccess(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	t.Setenv("KEEPER_HOME", tmpDir)
+	cfg, err := loadConfigForCLI()
+	assert.NoError(t, err)
+	assert.NotNil(t, cfg)
+}
+
 // TestAgentRunContextStartMCPError 覆盖 agentRunContext.Start 的 MCP 启动错误路径
 func TestAgentRunContextStartMCPError(t *testing.T) {
 	tmpDir, cleanup := setupTestConfig(t)
@@ -2864,4 +2933,318 @@ func TestBuildRunContextSuccess(t *testing.T) {
 	r, err := buildRunContext(cfg, "build-run-context-success-agent", log.Global())
 	assert.NoError(t, err)
 	assert.NotNil(t, r)
+}
+// TestKillProcessSuccess 测试 killProcess 成功终止进程
+func TestKillProcessSuccess(t *testing.T) {
+	// 创建一个子进程，它会持续运行直到被杀死
+	cmd := exec.Command("sleep", "10")
+	require.NoError(t, cmd.Start())
+
+	// 确保子进程在测试结束时被清理
+	defer func() {
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+	}()
+
+	// 等待进程启动
+	time.Sleep(100 * time.Millisecond)
+
+	// 杀死进程
+	err := killProcess(cmd.Process.Pid)
+	require.NoError(t, err)
+
+	// 等待进程终止
+	_, err = cmd.Process.Wait()
+	require.Error(t, err) // sleep 被杀死会返回错误
+}
+
+// TestCopyFileToPathPreservesPermissions 测试 copyFileToPath 保留文件权限
+func TestCopyFileToPathPreservesPermissions(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	// 创建源文件，设置特定权限
+	srcFile := filepath.Join(tmpDir, "source.txt")
+	require.NoError(t, os.WriteFile(srcFile, []byte("hello"), 0640))
+
+	// 获取源文件权限
+	srcInfo, err := os.Stat(srcFile)
+	require.NoError(t, err)
+
+	// 复制文件
+	dstFile := filepath.Join(tmpDir, "dest.txt")
+	err = copyFileToPath(srcFile, dstFile, srcInfo.Mode())
+	require.NoError(t, err)
+
+	// 验证目标文件权限
+	dstInfo, err := os.Stat(dstFile)
+	require.NoError(t, err)
+	assert.Equal(t, srcInfo.Mode(), dstInfo.Mode())
+
+	// 验证内容
+	content, err := os.ReadFile(dstFile)
+	require.NoError(t, err)
+	assert.Equal(t, []byte("hello"), content)
+}
+
+// TestPrintAgentSummary 测试 printAgentSummary 输出格式
+func TestPrintAgentSummary(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	// 创建 agent
+	require.NoError(t, createAgent(cfg, []string{"summary-agent"}))
+
+	// 获取 agent meta
+	store, err := storage.NewStore(cfg.Home)
+	require.NoError(t, err)
+	meta, err := store.GetAgent(context.Background(), "summary-agent")
+	require.NoError(t, err)
+
+	// 捕获输出
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	printAgentSummary(meta)
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+
+	// 验证输出包含关键字段
+	assert.Contains(t, output, "NAME:       summary-agent")
+	assert.Contains(t, output, "STATE:      created")
+	assert.Contains(t, output, "SHM_SIZE:   64")
+	assert.Contains(t, output, "MAX_DOWNLOAD: 1024")
+	assert.Contains(t, output, "ROOTFS:")
+	assert.Contains(t, output, "WORKSPACE:")
+	assert.Contains(t, output, "LOGS:")
+}
+
+// TestCreateAgentMCPServer 测试创建 MCP 服务器
+func TestCreateAgentMCPServer(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	logger := log.Global()
+	server, err := createAgentMCPServer(cfg, "mcp-test-agent", logger)
+	require.NoError(t, err)
+	assert.NotNil(t, server)
+
+	// 清理
+	_ = server.Stop()
+}
+
+// TestCreateAgentMCPServerError 覆盖 createAgentMCPServer 的错误路径
+func TestCreateAgentMCPServerError(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	// 创建一个文件而不是目录，导致 socket 目录创建失败
+	agentDir := filepath.Join(tmpDir, "agents", "mcp-error-agent")
+	require.NoError(t, os.MkdirAll(filepath.Dir(agentDir), 0750))
+	require.NoError(t, os.WriteFile(agentDir, []byte("not a directory"), 0644))
+
+	logger := log.Global()
+	server, err := createAgentMCPServer(cfg, "mcp-error-agent", logger)
+	assert.Error(t, err)
+	assert.Nil(t, server)
+	assert.Contains(t, err.Error(), "create mcp server")
+}
+
+// TestRunCommandEmpty 测试 run 函数处理空命令参数
+func TestRunCommandEmpty(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	os.Args = []string{"keeper", ""}
+	t.Setenv("KEEPER_HOME", tmpDir)
+
+	err := run()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "missing command")
+}
+
+// TestRunDestroyCommand 测试 run 函数执行 destroy 命令
+func TestRunDestroyCommand(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	oldLogger := log.Global()
+	defer log.SetGlobal(oldLogger)
+
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	// 创建 agent
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+	require.NoError(t, createAgent(cfg, []string{"destroy-test-agent"}))
+
+	os.Args = []string{"keeper", "destroy", "destroy-test-agent"}
+	t.Setenv("KEEPER_HOME", tmpDir)
+
+	err = run()
+	assert.NoError(t, err)
+}
+
+// TestRunRecoverCommand 测试 run 函数执行 recover 命令
+func TestRunRecoverCommand(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	oldLogger := log.Global()
+	defer log.SetGlobal(oldLogger)
+
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	// 创建 agent
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+	require.NoError(t, createAgent(cfg, []string{"recover-test-agent"}))
+
+	os.Args = []string{"keeper", "recover", "recover-test-agent"}
+	t.Setenv("KEEPER_HOME", tmpDir)
+
+	err = run()
+	assert.NoError(t, err)
+}
+
+func TestRunCommandInvalid(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	// 测试未知命令
+	err = routeCommand(cfg, "unknown-command", nil)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown command")
+}
+// TestRunNoCommand 测试 run 函数无命令参数
+func TestRunNoCommand(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	oldLogger := log.Global()
+	defer log.SetGlobal(oldLogger)
+
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	os.Args = []string{"keeper"}
+	t.Setenv("KEEPER_HOME", tmpDir)
+
+	// 验证 os.Args 设置正确
+	assert.Len(t, os.Args, 1)
+	assert.Equal(t, "keeper", os.Args[0])
+
+	// run() 在无命令时会先 printUsage，然后 routeCommand 返回 unknown command 错误
+	err := run()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown command")
+}
+
+// TestRunUnknownCommand 测试 run 函数处理未知命令
+func TestRunUnknownCommand(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	oldLogger := log.Global()
+	defer log.SetGlobal(oldLogger)
+
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	os.Args = []string{"keeper", "unknown-command"}
+	t.Setenv("KEEPER_HOME", tmpDir)
+
+	err := run()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown command")
+}
+
+// TestRunListCommand 测试 run 函数执行 list 命令
+func TestRunListCommand(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	oldLogger := log.Global()
+	defer log.SetGlobal(oldLogger)
+
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	// 创建 agent
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+	require.NoError(t, createAgent(cfg, []string{"list-test-agent"}))
+
+	os.Args = []string{"keeper", "list"}
+	t.Setenv("KEEPER_HOME", tmpDir)
+
+	// 捕获输出
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err = run()
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	assert.NoError(t, err)
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+	assert.Contains(t, output, "list-test-agent")
+}
+// TestCopyFileToPathNonExistentSource 测试 copyFileToPath 源文件不存在
+func TestCopyFileToPathNonExistentSource(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	// 源文件不存在
+	srcFile := filepath.Join(tmpDir, "nonexistent.txt")
+	dstFile := filepath.Join(tmpDir, "dest.txt")
+
+	err := copyFileToPath(srcFile, dstFile, 0644)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "open source")
+}
+
+// TestCopyFileToPathDestinationIsDir 测试 copyFileToPath 目标是目录
+func TestCopyFileToPathDestinationIsDir(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	// 创建源文件
+	srcFile := filepath.Join(tmpDir, "source.txt")
+	require.NoError(t, os.WriteFile(srcFile, []byte("hello"), 0644))
+
+	// 目标是一个目录
+	dstDir := filepath.Join(tmpDir, "dest_dir")
+	require.NoError(t, os.MkdirAll(dstDir, 0750))
+
+	err := copyFileToPath(srcFile, dstDir, 0644)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "create destination")
 }

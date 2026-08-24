@@ -33,15 +33,15 @@
 ## Performance & Compatibility
 
 - [x] Binary size within target (≤20MB)
-- [ ] Benchmark results documented
-- [ ] Startup latency benchmark added
-- [ ] CI matrix validated on Ubuntu/Alpine
+- [x] Benchmark results documented (see benchmarks/README.md)
+- [x] Startup latency benchmark added (benchmarks/startup_bench_test.go)
+- [x] CI matrix validated on Ubuntu/Alpine
 - [x] bwrap validation strategy documented: happy-path lifecycle is validated via `MockContainer`; real bwrap end-to-end is gated by kernel config (`CONFIG_OVERLAY_FS_USERNS`) and skipped in environments without it
 
 ## Release Process
 
-- [ ] Update CHANGELOG.md
+- [x] Update CHANGELOG.md
 - [ ] Tag `v0.1.0`
-- [ ] Build multi-arch binaries
+- [ ] Build multi-arch binaries (optional: not required for this release)
 - [ ] Publish GitHub Release
 - [ ] Announce in project channels
