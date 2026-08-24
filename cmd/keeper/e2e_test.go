@@ -14,6 +14,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const (
+	e2eForkSourceAgent = "fork-source"
+	e2eForkTargetAgent = "fork-target"
+	e2eLifecycleAgent  = "lifecycle-agent"
+)
+
 // TestAgentLifecycleEndToEnd 测试 Agent 完整生命周期
 func TestAgentLifecycleEndToEnd(t *testing.T) {
 	tmpDir, cleanup := setupTestConfig(t)
@@ -104,8 +110,8 @@ func TestAgentForkEndToEnd(t *testing.T) {
 	cfg, err := config.Load(tmpDir)
 	require.NoError(t, err)
 
-	sourceAgent := "fork-source"
-	targetAgent := "fork-target"
+	sourceAgent := e2eForkSourceAgent
+	targetAgent := e2eForkTargetAgent
 
 	// 1. 创建源 Agent
 	err = createAgent(cfg, []string{sourceAgent})
@@ -597,7 +603,7 @@ func TestAgentFullLifecycleEndToEnd(t *testing.T) {
 	cfg, err := config.Load(tmpDir)
 	require.NoError(t, err)
 
-	agentName := "lifecycle-agent"
+	agentName := e2eLifecycleAgent
 
 	// 1. 创建 Agent
 	err = createAgent(cfg, []string{agentName})
@@ -639,8 +645,8 @@ func TestAgentForkEndToEndSimple(t *testing.T) {
 	cfg, err := config.Load(tmpDir)
 	require.NoError(t, err)
 
-	sourceName := "fork-source"
-	targetName := "fork-target"
+	sourceName := e2eForkSourceAgent
+	targetName := e2eForkTargetAgent
 
 	// 1. 创建源 Agent
 	err = createAgent(cfg, []string{sourceName})

@@ -2689,3 +2689,104 @@ func TestIntegrationAgentLifecycleFull(t *testing.T) {
 	_, err = store.GetAgent(context.Background(), agentName)
 	assert.Error(t, err)
 }
+
+// TestLoadConfigForCLIError 覆盖 loadConfigForCLI 的 config.Load 错误路径
+func TestLoadConfigForCLIError(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	// 写入非法 JSON 配置文件
+	configFile := filepath.Join(tmpDir, "config.json")
+	require.NoError(t, os.WriteFile(configFile, []byte("invalid json{"), 0600))
+
+	t.Setenv("KEEPER_HOME", tmpDir)
+	_, err := loadConfigForCLI()
+	assert.Error(t, err)
+}
+
+// TestAgentRunContextStartMCPError 覆盖 agentRunContext.Start 的 MCP 启动错误路径
+func TestAgentRunContextStartMCPError(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	store, err := storage.NewStore(tmpDir)
+	require.NoError(t, err)
+
+	// 使用超长路径作为 socket 路径，导致 net.Listen("unix", ...) 失败
+	longPath := filepath.Join(tmpDir, "socket")
+	for i := 0; i < 20; i++ {
+		longPath = filepath.Join(longPath, "verylongsocketpathname")
+	}
+	// 确保路径超过 Unix socket 限制（通常 108 字节）
+	longPath = longPath + "/socket" + strings.Repeat("x", 50)
+
+	mcpServer, err := mcp.NewServer(mcp.ServerConfig{
+		SocketPath: longPath,
+		Store:      store,
+		AgentName:  "test-mcp-agent",
+	}, log.Global())
+	require.NoError(t, err)
+
+	wd := watchdog.NewWatchdog(watchdog.Config{
+		Timeout: 100,
+	}, log.Global())
+
+	ctx := context.Background()
+	r := &agentRunContext{
+		Container: &container.MockContainer{},
+		MCP:       mcpServer,
+		Watchdog:  wd,
+		cfg:       cfg,
+	}
+
+	err = r.Start(ctx)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "start mcp server")
+}
+
+// TestAgentRunContextStartWatchdogAlreadyRunning 覆盖 agentRunContext.Start 的 Watchdog 重复启动错误路径
+func TestAgentRunContextStartWatchdogAlreadyRunning(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	store, err := storage.NewStore(tmpDir)
+	require.NoError(t, err)
+
+	mcpServer, err := mcp.NewServer(mcp.ServerConfig{
+		SocketPath: filepath.Join(tmpDir, "test-mcp.sock"),
+		Store:      store,
+		AgentName:  "test-mcp-agent",
+	}, log.Global())
+	require.NoError(t, err)
+
+	wd := watchdog.NewWatchdog(watchdog.Config{
+		Timeout: 100,
+	}, log.Global())
+
+	ctx := context.Background()
+	r := &agentRunContext{
+		Container: &container.MockContainer{},
+		MCP:       mcpServer,
+		Watchdog:  wd,
+		cfg:       cfg,
+	}
+
+	// 第一次启动成功
+	err = r.Start(ctx)
+	assert.NoError(t, err)
+
+	// 停止 MCP server 以便只测试 Watchdog 重复启动
+	r.MCP.Stop()
+
+	// 第二次启动应该失败（watchdog 已在运行）
+	err = r.Start(ctx)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "start watchdog")
+}
+
