@@ -751,6 +751,8 @@ func (l *testLogger) WithFields(fields ...log.Field) log.Logger   { return l }
 func (l *testLogger) WithTrace(traceID, spanID string) log.Logger { return l }
 func (l *testLogger) Sync() error                                 { return nil }
 func (l *testLogger) SetOutput(w io.Writer)                       {}
+func (l *testLogger) AddHook(hook log.Hook)                       {}
+func (l *testLogger) SetHooks(hooks ...log.Hook)                  {}
 
 // TestBwrapContainerSetEnableUserNS 测试 UserNS 配置
 func TestBwrapContainerSetEnableUserNS(t *testing.T) {

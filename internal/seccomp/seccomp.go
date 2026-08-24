@@ -605,6 +605,8 @@ func NewDefaultFilter() *Filter {
 			"init_module", "finit_module", "kexec_load", "syslog",
 			"iopl", "ioperm", "modify_ldt", "ptrace", "process_vm_readv",
 			"process_vm_writev", "kcmp", "pidfd_send_signal",
+			// 显式拦截 clone3，强制走传统 clone/ fork 路径
+			"clone3",
 		},
 		DefaultAction: RetErrno,
 	}

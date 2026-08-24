@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 )
@@ -191,6 +192,42 @@ func checkSeccomp() bool {
 		}
 	}
 	return false
+}
+
+// ProbeOverlayDryRun 执行 OverlayFS + UserNS 的实际挂载探测。
+// 若当前内核/权限不支持，返回明确错误，而非仅依赖配置静态检测。
+func ProbeOverlayDryRun() error {
+	tmpDir, err := os.MkdirTemp("", "keeper-overlay-probe-*")
+	if err != nil {
+		return fmt.Errorf("create probe temp dir: %w", err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	upper := filepath.Join(tmpDir, "probe_upper")
+	work := filepath.Join(tmpDir, "probe_work")
+	lower := filepath.Join(tmpDir, "probe_root")
+	for _, dir := range []string{upper, work, lower} {
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			return fmt.Errorf("create probe dir %s: %w", dir, err)
+		}
+	}
+
+	args := []string{
+		"--unshare-all",
+		"--unshare-user",
+		"--map-root-user",
+		"--ro-bind", lower, "/lower",
+		"--bind", upper, "/upper",
+		"--bind", work, "/work",
+		"--overlay", "/", "/lower:/upper:/work",
+		"--", "/bin/sh", "-c", "true",
+	}
+
+	cmd := exec.Command("bwrap", args...) // #nosec G204
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("overlay dry-run failed: %w", err)
+	}
+	return nil
 }
 
 // ProbeReport 生成详细的探测报告（JSON 格式）

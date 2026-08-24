@@ -54,6 +54,12 @@ type Logger interface {
 
 	// 设置输出目标
 	SetOutput(w io.Writer)
+
+	// AddHook 添加日志钩子
+	AddHook(hook Hook)
+
+	// SetHooks 替换所有日志钩子
+	SetHooks(hooks ...Hook)
 }
 
 // 预定义字段键
@@ -71,12 +77,17 @@ const (
 	FieldSpanID    = "span_id"
 )
 
-// entry 日志条目
-type entry struct {
+// Entry 日志条目
+type Entry struct {
 	Level   Level             `json:"level"`
 	Message string            `json:"message"`
 	Time    time.Time         `json:"timestamp"`
 	Fields  map[string]string `json:"fields,omitempty"`
+}
+
+// Hook 日志钩子接口
+type Hook interface {
+	OnLog(entry Entry)
 }
 
 // logger 日志实现
@@ -85,6 +96,7 @@ type logger struct {
 	fields  map[string]string
 	traceID string
 	spanID  string
+	hooks   []Hook
 }
 
 // New creates a new Logger instance writing to the given output.
@@ -142,7 +154,7 @@ func (l *logger) WithTrace(traceID, spanID string) Logger {
 
 // log 内部日志方法
 func (l *logger) log(level Level, msg string, fields ...Field) {
-	entry := entry{
+	entry := Entry{
 		Level:   level,
 		Message: msg,
 		Time:    time.Now().UTC(),
@@ -157,6 +169,11 @@ func (l *logger) log(level Level, msg string, fields ...Field) {
 	// 添加临时字段
 	for _, f := range fields {
 		entry.Fields[f.Key] = fmt.Sprintf("%v", f.Value)
+	}
+
+	// 调用钩子
+	for _, hook := range l.hooks {
+		hook.OnLog(entry)
 	}
 
 	data, err := json.Marshal(entry)
@@ -206,6 +223,16 @@ func (l *logger) Sync() error {
 // SetOutput 设置输出目标
 func (l *logger) SetOutput(w io.Writer) {
 	l.output = w
+}
+
+// AddHook 添加日志钩子
+func (l *logger) AddHook(hook Hook) {
+	l.hooks = append(l.hooks, hook)
+}
+
+// SetHooks 替换所有日志钩子
+func (l *logger) SetHooks(hooks ...Hook) {
+	l.hooks = hooks
 }
 
 // 全局日志器实例

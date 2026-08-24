@@ -221,6 +221,14 @@ func (s *Summary) updateLabels(values []string) {
 	}
 }
 
+// 环形缓冲区指标
+var (
+	// RingBufferDropped 环形缓冲区丢弃条目计数
+	RingBufferDropped = RegisterCounter("keeper_ringbuffer_dropped_total", "Total number of log entries dropped by ring buffer", nil)
+	// RingBufferSize 环形缓冲区当前大小
+	RingBufferSize = RegisterGauge("keeper_ringbuffer_size", "Current number of entries in ring buffer", nil)
+)
+
 // Registry 指标注册表
 type Registry struct {
 	counters   map[string]*Counter

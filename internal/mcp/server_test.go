@@ -98,7 +98,7 @@ func TestServerStopNotRunning(t *testing.T) {
 
 func TestDefaultSocketPath(t *testing.T) {
 	path := defaultSocketPath("my-agent")
-	assert.Equal(t, "/tmp/keeper-my-agent.sock", path)
+	assert.Equal(t, "\x00keeper-my-agent", path)
 }
 
 func TestSocketDir(t *testing.T) {
@@ -110,6 +110,7 @@ func TestSocketDir(t *testing.T) {
 		{"/var/run/keeper.sock", "/var/run"},
 		{"keeper.sock", "/tmp"},
 		{"/a/b/c.sock", "/a/b"},
+		{"\x00keeper-test", ""},
 	}
 
 	for _, tc := range cases {

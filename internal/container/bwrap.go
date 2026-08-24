@@ -20,6 +20,8 @@ import (
 	"keeper/pkg/config"
 )
 
+var errOverlayUnsupported = errors.NewKeeperError(errors.ErrCodeFatalKernel, "OverlayFS+UserNS 不可用，请确保宿主机内核支持 CONFIG_OVERLAY_FS_USERNS", nil)
+
 const (
 	stateStopped     = "stopped"
 	runtimeTypeBwrap = "bwrap"
@@ -134,6 +136,23 @@ func (c *BwrapContainer) Start(ctx context.Context, spec Spec) (int, error) {
 		return 0, err
 	}
 
+	// 执行 OverlayFS + UserNS 实际挂载探测（Dry-Run）
+	if err := bootstrap.ProbeOverlayDryRun(); err != nil {
+		c.status.State = "fatal_unsupported_kernel"
+		RecordContainerStart(runtimeTypeBwrap, "error")
+		return 0, errOverlayUnsupported
+	}
+
+	// 生成 sanitized resolv.conf（过滤 127.0.0.x + 网关 fallback）
+	resolvPath, err := SanitizedResolvConf()
+	if err != nil {
+		c.logger.Warn("failed to create sanitized resolv.conf", log.Field{Key: "error", Value: err.Error()})
+	} else {
+		defer func() {
+			_ = os.Remove(resolvPath)
+		}()
+	}
+
 	// 构建 bwrap 参数，并收集 Seccomp BPF 临时文件路径
 	args, bpfFile := c.buildArgs(spec)
 
@@ -148,10 +167,17 @@ func (c *BwrapContainer) Start(ctx context.Context, spec Spec) (int, error) {
 		}()
 	}
 
+	// 注入 sanitized resolv.conf bind-mount
+	if resolvPath != "" {
+		args = append(args, "--bind", resolvPath, "/etc/resolv.conf")
+	}
+
 	// 创建命令
 	cmd := exec.CommandContext(ctx, runtimeTypeBwrap, args...) // #nosec G204
 	cmd.Stdout = nil
 	cmd.Stderr = nil
+	// 防御性设置：强制 Go 运行时走 clone 而非 clone3
+	cmd.Env = append(os.Environ(), "GODEBUG=clone3=0")
 
 	// 启动进程
 	if err := cmd.Start(); err != nil {
@@ -161,10 +187,21 @@ func (c *BwrapContainer) Start(ctx context.Context, spec Spec) (int, error) {
 	}
 
 	c.cmd = cmd
+
+	// 确定性获取 PGID：读取实际进程组 ID，而非假设等于 PID
+	pgid := cmd.Process.Pid
+	if gid, err := syscall.Getpgid(pgid); err == nil && gid > 0 {
+		pgid = gid
+	} else if err != nil {
+		c.logger.Warn("failed to get pgid, falling back to pid",
+			log.Field{Key: "pid", Value: cmd.Process.Pid},
+			log.Field{Key: "error", Value: err.Error()})
+	}
+
 	c.status = Status{
 		State:  "running",
 		PID:    cmd.Process.Pid,
-		PGID:   cmd.Process.Pid,
+		PGID:   pgid,
 		Uptime: 0,
 		Ports:  spec.Ports,
 	}

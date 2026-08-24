@@ -42,3 +42,4 @@ embedded/seccomp.bpf
 
 # Keeper data (user-specific)
 !.local/share/keeper/
+MIRAGE_IMPROVEMENTS_TODO.md

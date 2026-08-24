@@ -13,6 +13,7 @@ import (
 
 	"keeper/internal/container"
 	"keeper/internal/log"
+	"keeper/internal/logring"
 	"keeper/internal/mcp"
 	"keeper/internal/metrics"
 	"keeper/internal/storage"
@@ -91,6 +92,7 @@ func loadConfigForCLI() (*config.Config, error) {
 		return nil, fmt.Errorf("load config: %w", err)
 	}
 	logger := globalLogger.WithFields(log.Field{Key: "home", Value: home})
+	logger.AddHook(logring.DefaultHook())
 	log.SetGlobal(logger)
 	return cfg, nil
 }

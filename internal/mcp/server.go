@@ -12,6 +12,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -48,6 +49,11 @@ type ServerConfig struct {
 	AllowedGIDs []uint32
 }
 
+// isAbstractSocket 检查是否为抽象命名空间 Unix Socket（Linux）
+func isAbstractSocket(path string) bool {
+	return strings.HasPrefix(path, "\x00")
+}
+
 // NewServer creates a new MCP server instance bound to a Unix domain socket.
 func NewServer(cfg ServerConfig, logger log.Logger) (*Server, error) {
 	if cfg.SocketPath == "" {
@@ -58,16 +64,19 @@ func NewServer(cfg ServerConfig, logger log.Logger) (*Server, error) {
 		logger = log.Global()
 	}
 
-	// 确保 socket 目录存在
-	socketDir := socketDir(cfg.SocketPath)
-	if err := os.MkdirAll(socketDir, 0700); err != nil {
-		return nil, fmt.Errorf("create socket dir: %w", err)
-	}
+	// 抽象 socket 无需创建目录或清理旧文件
+	if !isAbstractSocket(cfg.SocketPath) {
+		// 确保 socket 目录存在
+		socketDir := socketDir(cfg.SocketPath)
+		if err := os.MkdirAll(socketDir, 0700); err != nil {
+			return nil, fmt.Errorf("create socket dir: %w", err)
+		}
 
-	// 删除已有 socket 文件
-	if _, err := os.Stat(cfg.SocketPath); err == nil {
-		if err := os.Remove(cfg.SocketPath); err != nil {
-			return nil, fmt.Errorf("remove old socket: %w", err)
+		// 删除已有 socket 文件
+		if _, err := os.Stat(cfg.SocketPath); err == nil {
+			if err := os.Remove(cfg.SocketPath); err != nil {
+				return nil, fmt.Errorf("remove old socket: %w", err)
+			}
 		}
 	}
 
@@ -106,8 +115,14 @@ func (s *Server) Start(ctx context.Context) error {
 		return fmt.Errorf("MCP server already running")
 	}
 
-	// 创建 Unix socket
-	listener, err := net.Listen("unix", s.socketPath)
+	var listener net.Listener
+	var err error
+	if isAbstractSocket(s.socketPath) {
+		addr := &net.UnixAddr{Name: s.socketPath, Net: "unix"}
+		listener, err = net.ListenUnix("unix", addr)
+	} else {
+		listener, err = net.Listen("unix", s.socketPath)
+	}
 	if err != nil {
 		RecordMCPConnection("error")
 		return fmt.Errorf("create socket listener: %w", err)
@@ -115,11 +130,13 @@ func (s *Server) Start(ctx context.Context) error {
 	s.listener = listener
 	s.running = true
 
-	// 设置 socket 权限为 0600（仅属主可访问）
-	if err := os.Chmod(s.socketPath, 0600); err != nil {
-		_ = s.Stop()
-		RecordMCPConnection("error")
-		return fmt.Errorf("set socket permissions: %w", err)
+	// 抽象 socket 无文件权限概念；路径 socket 保持 0600
+	if !isAbstractSocket(s.socketPath) {
+		if err := os.Chmod(s.socketPath, 0600); err != nil {
+			_ = s.Stop()
+			RecordMCPConnection("error")
+			return fmt.Errorf("set socket permissions: %w", err)
+		}
 	}
 
 	s.logger.Info("MCP server started", log.Field{Key: "socket", Value: s.socketPath})
@@ -148,10 +165,13 @@ func (s *Server) Stop() error {
 		}
 	}
 
-	// 清理 socket 文件
-	if _, err := os.Stat(s.socketPath); err == nil {
-		if err := os.Remove(s.socketPath); err != nil {
-			s.logger.Error("error removing socket file", log.Field{Key: "error", Value: err.Error()})
+	// 抽象 socket 无文件残留，无需清理
+	if !isAbstractSocket(s.socketPath) {
+		// 清理 socket 文件
+		if _, err := os.Stat(s.socketPath); err == nil {
+			if err := os.Remove(s.socketPath); err != nil {
+				s.logger.Error("error removing socket file", log.Field{Key: "error", Value: err.Error()})
+			}
 		}
 	}
 
@@ -746,10 +766,14 @@ func mapCpArgs(args map[string]interface{}) (string, []string, error) {
 // Socket 路径管理
 
 func defaultSocketPath(agentName string) string {
-	return fmt.Sprintf("/tmp/keeper-%s.sock", agentName)
+	// 使用抽象命名空间 Unix Socket，避免文件残留与权限竞争
+	return "\x00keeper-" + agentName
 }
 
 func socketDir(socketPath string) string {
+	if isAbstractSocket(socketPath) {
+		return ""
+	}
 	// 获取 socket 文件的目录
 	lastSep := -1
 	for i := len(socketPath) - 1; i >= 0; i-- {

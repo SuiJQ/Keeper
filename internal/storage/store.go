@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
 	"io"
 	"os"
@@ -16,6 +17,8 @@ import (
 	"time"
 
 	"golang.org/x/sys/unix"
+
+	keeperrors "keeper/internal/errors"
 )
 
 // Store 定义 Agent 存储操作接口
@@ -185,12 +188,14 @@ func (s *fileStore) CreateAgent(ctx context.Context, name string, defaultShmSize
 
 	// 原子写入 meta.json
 	if err := s.writeMeta(agentPath, meta); err != nil {
+		_ = os.RemoveAll(agentPath)
 		return nil, fmt.Errorf("write meta: %w", err)
 	}
 
 	// 初始化空 ports.json
 	portsPath := filepath.Join(agentPath, "ports.json")
 	if err := os.WriteFile(portsPath, []byte("[]\n"), 0600); err != nil {
+		_ = os.RemoveAll(agentPath)
 		return nil, fmt.Errorf("write ports: %w", err)
 	}
 
@@ -700,6 +705,9 @@ func copyPhysical(src, dst string) error {
 		dstFileCloseErr := dstFile.Close()
 
 		if copyErr != nil {
+			if stderrors.Is(copyErr, syscall.ENOSPC) {
+				return fmt.Errorf("%w: %s", keeperrors.ErrNoSpace, copyErr)
+			}
 			return copyErr
 		}
 		if srcFileCloseErr != nil {
@@ -795,9 +803,18 @@ func recreateWorkDir(workDir string) error {
 	if err := os.MkdirAll(workDir, 0700); err != nil {
 		return err
 	}
-	// 后台异步回收（简化）
+	// 后台异步回收（5 秒超时，超时则遗留文件由下次启动清理）
 	go func() {
-		_ = os.RemoveAll(purgeDir)
+		done := make(chan struct{})
+		go func() {
+			_ = os.RemoveAll(purgeDir)
+			close(done)
+		}()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			// 异步清理超时，遗留文件将由下次启动清理
+		}
 	}()
 	return nil
 }
@@ -860,6 +877,9 @@ func compressCopy(src, dst string, compressionLevel int) (int64, int, error) {
 			_ = closeErr
 		}
 		if err != nil {
+			if stderrors.Is(err, syscall.ENOSPC) {
+				return fmt.Errorf("%w: %s", keeperrors.ErrNoSpace, err)
+			}
 			return err
 		}
 		totalSize += n
@@ -868,6 +888,9 @@ func compressCopy(src, dst string, compressionLevel int) (int64, int, error) {
 
 	if err != nil {
 		_ = os.Remove(dst)
+		if stderrors.Is(err, syscall.ENOSPC) {
+			return 0, 0, fmt.Errorf("%w: %s", keeperrors.ErrNoSpace, err)
+		}
 		return 0, 0, err
 	}
 
