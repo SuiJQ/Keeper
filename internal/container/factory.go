@@ -14,6 +14,8 @@ func NewFactory(runtime string) (Factory, error) {
 		return NewDockerFactory(), nil
 	case "bwrap":
 		return NewBwrapFactory(), nil
+	case "mock":
+		return NewMockFactory(nil), nil
 	default:
 		return nil, fmt.Errorf("unsupported container runtime: %s", runtime)
 	}

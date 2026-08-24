@@ -34,6 +34,7 @@ func setupTestConfig(t *testing.T) (string, func()) {
 	tmpDir := t.TempDir()
 	cfg := config.DefaultConfig()
 	cfg.Home = tmpDir
+	cfg.ContainerRuntime = "mock"
 	require.NoError(t, cfg.Save())
 	return tmpDir, func() {}
 }
@@ -1561,7 +1562,7 @@ func TestEnsureRunningAgentStates(t *testing.T) {
 		wantErr bool
 	}{
 		{"created", "created", true},
-		{"stopped", stateStopped, true},
+		{"stopped", stateStopped, false}, // mock/docker runtime can start from stopped
 		{"running", stateRunning, false},
 		{"fatal", stateFatalContainer, true},
 	}
@@ -2400,7 +2401,9 @@ func TestIntegrationForkAgent(t *testing.T) {
 		assert.Equal(t, stateFatalContainer, meta.State)
 		return
 	}
-	defer func() { _ = stopAgent(cfg, []string{sourceName}) }()
+
+	// 必须先停止 source agent，ForkAgent 要求 source 处于 stopped/created 状态
+	require.NoError(t, stopAgent(cfg, []string{sourceName}))
 
 	// fork agent
 	err = forkAgent(cfg, []string{sourceName, targetName})
@@ -2636,18 +2639,29 @@ func TestIntegrationMCPAuth(t *testing.T) {
 	agentName := "mcp-auth-agent"
 	require.NoError(t, createAgent(cfg, []string{agentName}))
 
-	err = startAgent(cfg, []string{agentName})
-	if err != nil {
-		store, _ := storage.NewStore(cfg.Home)
-		meta, _ := store.GetAgent(context.Background(), agentName)
-		assert.Equal(t, stateFatalContainer, meta.State)
-		return
-	}
+	// 先启动 agent（容器层）
+	require.NoError(t, startAgent(cfg, []string{agentName}))
 	defer func() { _ = stopAgent(cfg, []string{agentName}) }()
 
 	store, _ := storage.NewStore(cfg.Home)
 	meta, _ := store.GetAgent(context.Background(), agentName)
 	assert.Equal(t, stateRunning, meta.State)
+
+	// 手动创建并启动 MCP server（模拟 runAgentCommand 的行为）
+	logger := log.Global().WithFields(log.Field{Key: "agent_name", Value: agentName})
+	mcpServer, err := mcp.NewServer(mcp.ServerConfig{
+		SocketPath:  filepath.Join(cfg.Home, "agents", agentName, "mcp.sock"),
+		AgentName:   agentName,
+		AllowedUIDs: cfg.MCPAllowedUIDs,
+		AllowedGIDs: cfg.MCPAllowedGIDs,
+	}, logger)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	require.NoError(t, mcpServer.Start(ctx))
+	defer func() { _ = mcpServer.Stop() }()
 
 	// 验证 MCP socket 存在
 	socketPath := filepath.Join(cfg.Home, "agents", agentName, "mcp.sock")

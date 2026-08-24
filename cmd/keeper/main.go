@@ -376,6 +376,10 @@ func runAgentCommand(cfg *config.Config, args []string) error {
 		return err
 	}
 
+	if meta.State == stateRunning {
+		return fmt.Errorf("cannot run agent in state: running")
+	}
+
 	runCtx, err := buildRunContext(cfg, name, logger)
 	if err != nil {
 		return err
