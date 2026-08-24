@@ -21,12 +21,13 @@ import (
 )
 
 const (
-	appName         = "keeper"
-	version         = "0.1.0"
-	defaultHome     = ".local/share/keeper"
-	stateRunning    = "running"
-	stateStopped    = "stopped"
-	stateFatalBwrap = "fatal_bwrap_exec"
+	appName             = "keeper"
+	version             = "0.1.0"
+	defaultHome         = ".local/share/keeper"
+	stateRunning        = "running"
+	stateStopped        = "stopped"
+	stateFatalBwrap     = "fatal_bwrap_exec"
+	stateFatalContainer = "fatal_container_exec"
 )
 
 var (
@@ -193,7 +194,11 @@ func startAgentByName(cfg *config.Config, name string) error {
 		return nil
 	}
 
-	return startAgentContainer(store, name, meta, logger)
+	factory, err := container.NewFactory(cfg.ContainerRuntime)
+	if err != nil {
+		return fmt.Errorf("create container factory: %w", err)
+	}
+	return startAgentContainer(store, name, meta, logger, factory)
 }
 
 func loadAgentMetaForStart(store storage.Store, name string) (*storage.AgentMeta, error) {
@@ -207,12 +212,11 @@ func loadAgentMetaForStart(store storage.Store, name string) (*storage.AgentMeta
 	return meta, nil
 }
 
-func startAgentContainer(store storage.Store, name string, meta *storage.AgentMeta, logger log.Logger) error {
+func startAgentContainer(store storage.Store, name string, meta *storage.AgentMeta, logger log.Logger, factory container.Factory) error {
 	if meta.State != "created" && meta.State != stateStopped {
 		return fmt.Errorf("cannot start agent in state: %s", meta.State)
 	}
 
-	factory := container.NewBwrapFactory()
 	c, err := factory.Create(name)
 	if err != nil {
 		return fmt.Errorf("create container: %w", err)
@@ -222,7 +226,7 @@ func startAgentContainer(store storage.Store, name string, meta *storage.AgentMe
 	pid, err := c.Start(context.Background(), spec)
 	if err != nil {
 		_ = c.Close()
-		meta.State = stateFatalBwrap
+		meta.State = stateFatalContainer
 		meta.Error = err.Error()
 		_ = store.UpdateAgent(context.Background(), meta)
 		return fmt.Errorf("start container: %w", err)
@@ -299,7 +303,11 @@ func loadAgentMetaForStop(store storage.Store, name string) (*storage.AgentMeta,
 }
 
 func stopAgentContainer(cfg *config.Config, store storage.Store, name string, meta *storage.AgentMeta, logger log.Logger) error {
-	c := getContainerForStop(name)
+	factory, err := container.NewFactory(cfg.ContainerRuntime)
+	if err != nil {
+		return fmt.Errorf("create container factory: %w", err)
+	}
+	c := getContainerForStop(name, factory)
 
 	applyStopContainerStrategies(c, cfg, logger)
 
@@ -316,10 +324,9 @@ func stopAgentContainer(cfg *config.Config, store storage.Store, name string, me
 	return nil
 }
 
-func getContainerForStop(name string) container.Container {
+func getContainerForStop(name string, factory container.Factory) container.Container {
 	c, registered := container.Get(name)
 	if !registered {
-		factory := container.NewBwrapFactory()
 		c, _ = factory.Create(name)
 	}
 	return c
@@ -424,8 +431,11 @@ func buildRunContext(cfg *config.Config, name string, logger log.Logger) (*agent
 	if registered, ok := container.Get(name); ok {
 		c = registered
 	} else {
-		var err error
-		c, err = createAgentContainer(name)
+		factory, err := container.NewFactory(cfg.ContainerRuntime)
+		if err != nil {
+			return nil, fmt.Errorf("create container factory: %w", err)
+		}
+		c, err = createAgentContainer(name, factory)
 		if err != nil {
 			return nil, err
 		}
@@ -462,8 +472,7 @@ func buildRunContext(cfg *config.Config, name string, logger log.Logger) (*agent
 	}, nil
 }
 
-func createAgentContainer(name string) (container.Container, error) {
-	factory := container.NewBwrapFactory()
+func createAgentContainer(name string, factory container.Factory) (container.Container, error) {
 	c, err := factory.Create(name)
 	if err != nil {
 		return nil, fmt.Errorf("create container: %w", err)

@@ -21,8 +21,10 @@ const (
 	StateFatalKernel State = "fatal_unsupported_kernel"
 	// StateFatalDState is D state process detected.
 	StateFatalDState State = "fatal_d_state"
-	// StateFatalBwrap is cannot execute bwrap.
+	// StateFatalBwrap is cannot execute bwrap (legacy, kept for compatibility).
 	StateFatalBwrap State = "fatal_bwrap_exec"
+	// StateFatalContainer is generic container runtime failure.
+	StateFatalContainer State = "fatal_container_exec"
 	// StateFatalNoSpace is storage space insufficient.
 	StateFatalNoSpace State = "fatal_no_space"
 )
@@ -30,7 +32,7 @@ const (
 // IsTerminal 检查是否为终态
 func (s State) IsTerminal() bool {
 	switch s {
-	case StateStopped, StateFatalKernel, StateFatalDState, StateFatalBwrap, StateFatalNoSpace:
+	case StateStopped, StateFatalKernel, StateFatalDState, StateFatalBwrap, StateFatalContainer, StateFatalNoSpace:
 		return true
 	}
 	return false
@@ -39,7 +41,7 @@ func (s State) IsTerminal() bool {
 // IsFatal 检查是否为 fatal 状态
 func (s State) IsFatal() bool {
 	switch s {
-	case StateFatalKernel, StateFatalDState, StateFatalBwrap, StateFatalNoSpace:
+	case StateFatalKernel, StateFatalDState, StateFatalBwrap, StateFatalContainer, StateFatalNoSpace:
 		return true
 	}
 	return false
@@ -52,13 +54,14 @@ func (s State) String() string {
 
 // allowedTransitions 允许的状态转换表（集中定义，避免重复）
 var allowedTransitions = map[State][]State{
-	StateCreated:      {StateRunning},
-	StateStopped:      {StateRunning},
-	StateRunning:      {StateStopped, StateFatalDState},
-	StateFatalKernel:  {StateStopped},
-	StateFatalDState:  {StateStopped},
-	StateFatalBwrap:   {StateStopped},
-	StateFatalNoSpace: {StateStopped},
+	StateCreated:        {StateRunning},
+	StateStopped:        {StateRunning},
+	StateRunning:        {StateStopped, StateFatalDState},
+	StateFatalKernel:    {StateStopped},
+	StateFatalDState:    {StateStopped},
+	StateFatalBwrap:     {StateStopped},
+	StateFatalContainer: {StateStopped},
+	StateFatalNoSpace:   {StateStopped},
 }
 
 // StateMachine 状态机

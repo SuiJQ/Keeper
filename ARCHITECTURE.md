@@ -5,7 +5,7 @@
 1. **收敛性优先**：所有异常在有限步骤内进入确定性终态（Running / Stopped / Fatal_*）
 2. **可维护性**：模块边界清晰，接口抽象，拒绝屎山代码
 3. **可监测性**：结构化日志，明确错误码，状态变更可追溯
-4. **可扩展性**：后端抽象（bwrap / kubevirt / mock），插件化策略
+4. **可扩展性**：后端抽象（docker / bwrap / mock），插件化策略
 5. **永不阻塞**：所有 I/O 带超时，所有进程派生带超时控制
 
 ## 核心接口
@@ -25,8 +25,8 @@ type Container interface {
 ```
 
 **后端实现**：
-- `bwrap`：bubblewrap 后端，利用 Linux UserNS + OverlayFS
-- `kubevirt`：KubeVirt 后端，用于 K8s 环境
+- `docker`：Docker 后端，默认运行时，依赖 Docker Engine
+- `bwrap`：bubblewrap 后端，兼容选项，依赖内核 UserNS + OverlayFS
 - `mock`：模拟后端，用于单元测试
 
 ### StateMachine
@@ -38,7 +38,7 @@ created ──start──→ running ──stop──→ stopped
    ↑                  │
    │                  ├── watchdog_timeout ──→ fatal_d_state
    │                  ├── probe_fail ──→ fatal_unsupported_kernel
-   │                  ├── bwrap_fail ──→ fatal_bwrap_exec
+   │                  ├── container_fail ──→ fatal_container_exec
    │                  └── no_space ──→ fatal_no_space
    │
    └── recover ←── recover ←── recover ←── recover

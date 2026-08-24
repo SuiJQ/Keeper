@@ -16,8 +16,8 @@
 
 - ✅ CLI 命令：`create` / `start` / `stop` / `status` / `destroy` / `recover` / `list` / `inspect` / `fork` / `cp`
 - ✅ 存储层：OverlayFS 目录管理、快照、回滚、缓存清理
-- ✅ 容器运行时：bwrap 后端框架（Exec/Status/Stop）
-- ✅ 环境探测：内核 CONFIG_OVERLAY_FS_USERNS、bwrap、Seccomp 检测
+- ✅ 容器运行时：Docker 后端框架（兼容 bwrap）
+- ✅ 环境探测：Docker daemon 可用性检测（兼容 bwrap/Seccomp 检测）
 - ✅ 看门狗：60s 超时收敛、D 态检测、优雅/强制停止
 - ✅ MCP Server：JSON-RPC 2.0 协议、工具注册、CLI 路由
 - ✅ 测试覆盖：storage / bootstrap / container / mcp / watchdog / cmd/keeper
@@ -28,7 +28,7 @@
 1. **收敛性优先**：所有异常在有限步骤内进入确定性终态（Running / Stopped / Fatal_*）
 2. **可维护性**：模块边界清晰，接口抽象，拒绝屎山代码
 3. **可监测性**：结构化日志，明确错误码，状态变更可追溯
-4. **可扩展性**：后端抽象（bwrap / kubevirt / mock），插件化策略
+4. **可扩展性**：后端抽象（docker / bwrap / mock），插件化策略
 5. **永不阻塞**：所有 I/O 带超时，所有进程派生带超时控制
 
 ## 开发
@@ -72,7 +72,9 @@ keeper/
 ├── internal/
 │   ├── agent/            # Agent 生命周期管理
 │   ├── container/        # 容器运行时抽象
-│   │   └── bwrap.go      # bubblewrap 后端
+│   │   ├── docker.go     # Docker 后端（默认）
+│   │   ├── bwrap.go      # bubblewrap 后端（兼容）
+│   │   └── mock.go       # Mock 后端（测试）
 │   ├── storage/          # 存储管理（OverlayFS、快照）
 │   ├── mcp/              # MCP 控制面
 │   ├── watchdog/         # 看门狗机制
@@ -92,7 +94,7 @@ keeper/
 
 ### 核心接口
 
-- **Container**：容器运行时抽象（bwrap / kubevirt / mock）
+- **Container**：容器运行时抽象（docker / bwrap / mock）
 - **StateMachine**：严格的状态机，防止非法状态转换
 - **Logger**：结构化日志接口，支持 JSON 输出
 - **KeeperError**：分级错误体系，明确错误码和恢复策略

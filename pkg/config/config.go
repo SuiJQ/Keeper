@@ -88,6 +88,9 @@ type Config struct {
 	// BwrapEnableSeccomp 是否启用 Seccomp
 	BwrapEnableSeccomp bool `json:"bwrap_enable_seccomp"`
 
+	// ContainerRuntime 容器运行时（docker / bwrap）
+	ContainerRuntime string `json:"container_runtime"`
+
 	// MetricsEnabled 是否启用 metrics server
 	MetricsEnabled bool `json:"metrics_enabled"`
 
@@ -131,6 +134,7 @@ func DefaultConfig() *Config {
 		StoragePruneInterval:         "1h",
 		BwrapEnableUserNS:            true,
 		BwrapEnableSeccomp:           true,
+		ContainerRuntime:             "docker",
 		MetricsEnabled:               true,
 		MetricsListenAddr:            ":9090",
 	}

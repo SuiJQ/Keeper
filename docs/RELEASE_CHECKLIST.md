@@ -13,7 +13,8 @@
 - [x] SOCKS5 proxy server implemented
 - [x] Port forwarding server implemented
 - [x] MCP SO_PEERCRED auth with UID/GID allowlists
-- [x] bwrap start/stop lifecycle improvements
+- [x] Docker start/stop lifecycle improvements
+- [x] bwrap remains compatible but is no longer the default runtime
 - [x] Config hot-reload validated by tests
 
 ## Testing
@@ -36,7 +37,7 @@
 - [x] Benchmark results documented (see benchmarks/README.md)
 - [x] Startup latency benchmark added (benchmarks/startup_bench_test.go)
 - [x] CI matrix validated on Ubuntu/Alpine
-- [x] bwrap validation strategy documented: happy-path lifecycle is validated via `MockContainer`; real bwrap end-to-end is gated by kernel config (`CONFIG_OVERLAY_FS_USERNS`) and skipped in environments without it
+- [x] Container runtime strategy documented: Docker is the default backend; bwrap remains a compatible alternative for environments without Docker
 
 ## Release Process
 

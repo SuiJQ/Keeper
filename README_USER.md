@@ -8,9 +8,11 @@
 
 ### 环境要求
 
-- Linux 内核 ≥ 5.11（推荐 6.x）
-- 开启 `CONFIG_OVERLAY_FS_USERNS`
-- 支持 UserNS、OverlayFS、renameat2
+- Docker Engine 20.10+（推荐 24.0+）
+- Linux 内核 ≥ 5.11（推荐 6.x），用于 overlay 存储与用户命名空间
+- 当前用户有权限执行 `docker run` / `docker stop` / `docker exec`
+
+> 除 Docker 外，Keeper 也兼容 bubblewrap（bwrap）后端，但默认以 Docker 作为容器运行时。
 
 ### 下载与构建
 
@@ -86,13 +88,28 @@ Keeper 支持通过 `config.json` 进行运行时配置，配置文件位于 Kee
 
 ## 故障排查
 
+### Docker 不可用
+
+如果启动失败并提示 `fatal_docker_exec`，请确认：
+1. Docker Engine 已安装并运行：`docker version`
+2. 当前用户有权限执行 Docker 命令（通常需要加入 `docker` 用户组）
+3. 宿主机内核支持 overlay2 存储驱动
+
 ### 内核不支持
 
-如果启动失败并提示 `fatal_unsupported_kernel`，说明当前内核不支持 UserNS + OverlayFS 组合。请升级内核到 5.11+（推荐 6.x）。
+如果使用 bwrap 后端时提示 `fatal_unsupported_kernel`，说明当前内核不支持 UserNS + OverlayFS 组合。请升级内核到 5.11+（推荐 6.x），或切换回 Docker 后端。
 
-### bwrap 失败
+### bwrap 兼容模式
 
-如果提示 `fatal_bwrap_exec`，请确认：
+Keeper 仍兼容 bubblewrap（bwrap）后端，但不是默认运行时。如需手动切换为 bwrap，请在 `config.json` 中设置：
+
+```json
+{
+  "container_runtime": "bwrap"
+}
+```
+
+若使用 bwrap 时提示 `fatal_bwrap_exec`，请确认：
 1. 已安装 bubblewrap：`sudo apt-get install bubblewrap`（Ubuntu/Debian）或 `sudo apk add bubblewrap`（Alpine）
 2. 内核开启 `CONFIG_OVERLAY_FS_USERNS`
 

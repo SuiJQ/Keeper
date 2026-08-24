@@ -1,0 +1,11 @@
+# DOCKER_BACKEND — Docker 作为默认容器运行时，bwrap 降级为兼容选项
+- [x] 阅读现有 bwrap 实现、Container 接口、cmd/keeper 调用点
+- [x] 在 pkg/config/config.go 增加 ContainerRuntime 配置项，默认 docker
+- [x] 在 internal/container/ 下新增 docker.go，实现 DockerContainer + DockerFactory
+- [x] 在 internal/container/ 下新增 factory.go 通用 NewFactory
+- [x] 修改 cmd/keeper/main.go：按配置选择 factory，bwrap 策略仅对 bwrap 生效
+- [x] 修改 cmd/keeper/main_test.go：去除硬编码 NewBwrapFactory，改用 factory + test-only errorFactory
+- [x] 本地 go test ./... 全绿
+- [ ] Docker 后端行为验证（需本地有 docker daemon）
+- [x] 文档：README/RELEASE_CHECKLIST/ARCHITECTURE 更新为 docker 优先、bwrap 兼容
+- [x] 默认运行时从 bwrap 调整为 docker

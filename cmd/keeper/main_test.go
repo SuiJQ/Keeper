@@ -38,6 +38,21 @@ func setupTestConfig(t *testing.T) (string, func()) {
 	return tmpDir, func() {}
 }
 
+// errorFactory 用于测试：任何 Create 调用都返回错误
+type errorFactory struct{}
+
+func (errorFactory) Create(string) (container.Container, error) {
+	return nil, fmt.Errorf("forced factory error")
+}
+
+func (errorFactory) Type() string {
+	return "error"
+}
+
+func newErrorFactory() container.Factory {
+	return errorFactory{}
+}
+
 func TestCreateAgent(t *testing.T) {
 	tmpDir, _ := setupTestConfig(t)
 	cfg, err := config.Load(tmpDir)
@@ -265,7 +280,7 @@ func TestRecoverAgent(t *testing.T) {
 	// 模拟 agent 处于错误状态
 	store, _ := storage.NewStore(cfg.Home)
 	meta, _ := store.GetAgent(context.Background(), "test-agent")
-	meta.State = stateFatalBwrap
+	meta.State = stateFatalContainer
 	meta.PID = cmd.Process.Pid
 	meta.Error = "test error"
 	_ = store.UpdateAgent(context.Background(), meta)
@@ -890,13 +905,13 @@ func TestStartAgentInvalidState(t *testing.T) {
 	// 设置无效状态
 	store, _ := storage.NewStore(cfg.Home)
 	meta, _ := store.GetAgent(context.Background(), "test-agent")
-	meta.State = stateFatalBwrap // 无效状态
+	meta.State = stateFatalContainer // 无效状态
 	_ = store.UpdateAgent(context.Background(), meta)
 
 	// 尝试启动应该失败
 	err = startAgent(cfg, []string{"test-agent"})
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "cannot start agent in state: fatal_bwrap_exec")
+	assert.Contains(t, err.Error(), "cannot start agent in state: fatal_container_exec")
 }
 
 func TestStopAgentInvalidState(t *testing.T) {
@@ -912,13 +927,13 @@ func TestStopAgentInvalidState(t *testing.T) {
 	// 设置无效状态
 	store, _ := storage.NewStore(cfg.Home)
 	meta, _ := store.GetAgent(context.Background(), "test-agent")
-	meta.State = stateFatalBwrap // 无效状态
+	meta.State = stateFatalContainer // 无效状态
 	_ = store.UpdateAgent(context.Background(), meta)
 
 	// 尝试停止应该失败
 	err = stopAgent(cfg, []string{"test-agent"})
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "cannot stop agent in state: fatal_bwrap_exec")
+	assert.Contains(t, err.Error(), "cannot stop agent in state: fatal_container_exec")
 }
 
 // TestMetricsCommand 测试 metrics 命令输出
@@ -1312,7 +1327,7 @@ func TestEnsureRunningAgentStart(t *testing.T) {
 	if err != nil {
 		assert.Contains(t, err.Error(), "start agent")
 	} else {
-		assert.Contains(t, []string{stateRunning, stateFatalBwrap}, meta.State)
+		assert.Contains(t, []string{stateRunning, stateFatalContainer}, meta.State)
 	}
 }
 
@@ -1328,12 +1343,12 @@ func TestEnsureRunningAgentInvalidState(t *testing.T) {
 
 	store, _ := storage.NewStore(cfg.Home)
 	meta, _ := store.GetAgent(context.Background(), "ensure-invalid-agent")
-	meta.State = stateFatalBwrap
+	meta.State = stateFatalContainer
 	_ = store.UpdateAgent(context.Background(), meta)
 
 	_, err = ensureRunningAgent(cfg, store, "ensure-invalid-agent")
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "cannot run agent in state: fatal_bwrap_exec")
+	assert.Contains(t, err.Error(), "cannot run agent in state: fatal_container_exec")
 }
 
 // TestRunAgentCommandInvalidState2 测试 runAgentCommand 非法状态
@@ -1348,12 +1363,12 @@ func TestRunAgentCommandInvalidState2(t *testing.T) {
 
 	store, _ := storage.NewStore(cfg.Home)
 	meta, _ := store.GetAgent(context.Background(), "run-invalid-agent")
-	meta.State = stateFatalBwrap
+	meta.State = stateFatalContainer
 	_ = store.UpdateAgent(context.Background(), meta)
 
 	err = runAgentCommand(cfg, []string{"run-invalid-agent"})
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "cannot run agent in state: fatal_bwrap_exec")
+	assert.Contains(t, err.Error(), "cannot run agent in state: fatal_container_exec")
 }
 
 // TestStartAgentMetricsDisabled 测试 metrics 禁用时 startAgentMetrics 提前返回
@@ -1456,7 +1471,7 @@ func TestUpdateAgentRunningMeta(t *testing.T) {
 
 // TestCreateAgentContainer 测试 createAgentContainer 创建容器实例
 func TestCreateAgentContainer(t *testing.T) {
-	c, err := createAgentContainer("container-agent")
+	c, err := createAgentContainer("container-agent", container.NewMockFactory(nil))
 	require.NoError(t, err)
 	assert.NotNil(t, c)
 	defer func() { _ = c.Close() }()
@@ -1548,7 +1563,7 @@ func TestEnsureRunningAgentStates(t *testing.T) {
 		{"created", "created", true},
 		{"stopped", stateStopped, true},
 		{"running", stateRunning, false},
-		{"fatal", stateFatalBwrap, true},
+		{"fatal", stateFatalContainer, true},
 	}
 
 	for _, tt := range tests {
@@ -1688,10 +1703,10 @@ func TestIntegrationLifecycle(t *testing.T) {
 	// start
 	err = startAgent(cfg, []string{agentName})
 	if err != nil {
-		// 内核版本不足时，bwrap 可能失败，这里接受 fatal_bwrap_exec 状态
+		// 内核版本不足时，bwrap 可能失败，这里接受 fatal_container_exec 状态
 		store, _ := storage.NewStore(cfg.Home)
 		meta, _ := store.GetAgent(context.Background(), agentName)
-		assert.Equal(t, stateFatalBwrap, meta.State)
+		assert.Equal(t, stateFatalContainer, meta.State)
 		return
 	}
 	defer func() { _ = stopAgent(cfg, []string{agentName}) }()
@@ -1752,7 +1767,7 @@ func TestStartAgentContainerErrors(t *testing.T) {
 		Name:  "error-container",
 		State: "invalid-state",
 	}
-	err = startAgentContainer(store, "error-container", meta, log.Global())
+	err = startAgentContainer(store, "error-container", meta, log.Global(), container.NewMockFactory(nil))
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "cannot start agent in state")
 }
@@ -1885,13 +1900,13 @@ func TestEnsureRunningAgentNotRunning(t *testing.T) {
 	meta.State = stateStopped
 	require.NoError(t, store.UpdateAgent(context.Background(), meta))
 
-	// 应该尝试启动 agent（bwrap 缺失时返回 fatal_bwrap_exec 状态）
+	// 应该尝试启动 agent（bwrap 缺失时返回 fatal_container_exec 状态）
 	result, err := ensureRunningAgent(cfg, store, "not-running-agent")
 	if err != nil {
 		// 本地内核版本不足时，bwrap 可能失败
 		store, _ := storage.NewStore(cfg.Home)
 		meta, _ := store.GetAgent(context.Background(), "not-running-agent")
-		assert.Equal(t, stateFatalBwrap, meta.State)
+		assert.Equal(t, stateFatalContainer, meta.State)
 		return
 	}
 	assert.NotNil(t, result)
@@ -2012,7 +2027,7 @@ func TestStartAgentContainerInvalidState(t *testing.T) {
 		Name:  "invalid-state-agent",
 		State: stateRunning,
 	}
-	err = startAgentContainer(store, "invalid-state-agent", meta, log.Global())
+	err = startAgentContainer(store, "invalid-state-agent", meta, log.Global(), container.NewMockFactory(nil))
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "cannot start agent in state")
 }
@@ -2062,7 +2077,7 @@ func TestStartAgentContainerStoreUpdateError(t *testing.T) {
 	// 删除 store 目录以触发 UpdateAgent 错误
 	_ = os.RemoveAll(cfg.Home)
 
-	err = startAgentContainer(store, "store-update-error-agent", meta, log.Global())
+	err = startAgentContainer(store, "store-update-error-agent", meta, log.Global(), container.NewMockFactory(nil))
 	assert.Error(t, err)
 }
 
@@ -2179,8 +2194,11 @@ func TestStartAgentContainerFactoryError(t *testing.T) {
 	}
 
 	// 使用无效的 container 名称触发 factory.Create 错误
-	// bwrap 对名称有要求，使用无效名称可能导致创建失败
-	err = startAgentContainer(store, "invalid-container-name-!@#", meta, log.Global())
+	// mock factory 会接受任何名称，因此这里改用真实运行时
+	factory, err := container.NewFactory(cfg.ContainerRuntime)
+	require.NoError(t, err)
+
+	err = startAgentContainer(store, "invalid-container-name-!@#", meta, log.Global(), factory)
 	assert.Error(t, err)
 }
 
@@ -2306,7 +2324,7 @@ func TestIntegrationNetworkProxy(t *testing.T) {
 	if err != nil {
 		store, _ := storage.NewStore(cfg.Home)
 		meta, _ := store.GetAgent(context.Background(), agentName)
-		assert.Equal(t, stateFatalBwrap, meta.State)
+		assert.Equal(t, stateFatalContainer, meta.State)
 		return
 	}
 	defer func() { _ = stopAgent(cfg, []string{agentName}) }()
@@ -2339,7 +2357,7 @@ func TestIntegrationSnapshotRollback(t *testing.T) {
 	if err != nil {
 		store, _ := storage.NewStore(cfg.Home)
 		meta, _ := store.GetAgent(context.Background(), agentName)
-		assert.Equal(t, stateFatalBwrap, meta.State)
+		assert.Equal(t, stateFatalContainer, meta.State)
 		return
 	}
 	defer func() { _ = stopAgent(cfg, []string{agentName}) }()
@@ -2379,7 +2397,7 @@ func TestIntegrationForkAgent(t *testing.T) {
 	if err != nil {
 		store, _ := storage.NewStore(cfg.Home)
 		meta, _ := store.GetAgent(context.Background(), sourceName)
-		assert.Equal(t, stateFatalBwrap, meta.State)
+		assert.Equal(t, stateFatalContainer, meta.State)
 		return
 	}
 	defer func() { _ = stopAgent(cfg, []string{sourceName}) }()
@@ -2427,8 +2445,8 @@ func TestIntegrationMultipleAgents(t *testing.T) {
 	for _, name := range agentNames {
 		meta, _ := store.GetAgent(context.Background(), name)
 		if meta != nil {
-			// agent 可能处于 running 或 fatal_bwrap_exec 状态
-			assert.Contains(t, []string{stateRunning, stateFatalBwrap}, meta.State)
+			// agent 可能处于 running 或 fatal_container_exec 状态
+			assert.Contains(t, []string{stateRunning, stateFatalContainer}, meta.State)
 		}
 	}
 
@@ -2527,10 +2545,10 @@ func TestStartAgentContainerBwrapError(t *testing.T) {
 	require.NoError(t, err)
 	meta.State = stateStopped
 
-	// 使用一个会导致 bwrap 失败的配置
+	// 使用一个会导致启动失败的 factory
 	cfg.Home = "/proc" // 无效的 home 目录
 
-	err = startAgentContainer(store, "bwrap-error-agent", meta, log.Global())
+	err = startAgentContainer(store, "bwrap-error-agent", meta, log.Global(), newErrorFactory())
 	assert.Error(t, err)
 }
 
@@ -2564,14 +2582,14 @@ func TestEnsureRunningAgentStartError(t *testing.T) {
 	store, err := storage.NewStore(cfg.Home)
 	require.NoError(t, err)
 
-	// 创建一个 agent，但使用无效的 home 目录使 startAgent 失败
-	meta, err := store.CreateAgent(context.Background(), "start-error-agent", cfg.DefaultShmSizeMB, cfg.MaxDownloadBytes)
-	require.NoError(t, err)
-	meta.State = stateStopped
-
+	// 使用一个会导致启动失败的 factory
 	cfg.Home = "/nonexistent/path"
 
-	err = startAgentContainer(store, "start-error-agent", meta, log.Global())
+	meta := &storage.AgentMeta{
+		Name:  "start-error-agent",
+		State: stateStopped,
+	}
+	err = startAgentContainer(store, "start-error-agent", meta, log.Global(), newErrorFactory())
 	assert.Error(t, err)
 }
 
@@ -2622,7 +2640,7 @@ func TestIntegrationMCPAuth(t *testing.T) {
 	if err != nil {
 		store, _ := storage.NewStore(cfg.Home)
 		meta, _ := store.GetAgent(context.Background(), agentName)
-		assert.Equal(t, stateFatalBwrap, meta.State)
+		assert.Equal(t, stateFatalContainer, meta.State)
 		return
 	}
 	defer func() { _ = stopAgent(cfg, []string{agentName}) }()
@@ -2656,7 +2674,7 @@ func TestIntegrationWatchdog(t *testing.T) {
 	if err != nil {
 		store, _ := storage.NewStore(cfg.Home)
 		meta, _ := store.GetAgent(context.Background(), agentName)
-		assert.Equal(t, stateFatalBwrap, meta.State)
+		assert.Equal(t, stateFatalContainer, meta.State)
 		return
 	}
 	defer func() { _ = stopAgent(cfg, []string{agentName}) }()
@@ -2688,7 +2706,7 @@ func TestIntegrationMetrics(t *testing.T) {
 	if err != nil {
 		store, _ := storage.NewStore(cfg.Home)
 		meta, _ := store.GetAgent(context.Background(), agentName)
-		assert.Equal(t, stateFatalBwrap, meta.State)
+		assert.Equal(t, stateFatalContainer, meta.State)
 		return
 	}
 	defer func() { _ = stopAgent(cfg, []string{agentName}) }()
@@ -2723,7 +2741,7 @@ func TestIntegrationAgentLifecycleFull(t *testing.T) {
 	err = startAgent(cfg, []string{agentName})
 	if err != nil {
 		meta, _ = store.GetAgent(context.Background(), agentName)
-		assert.Equal(t, stateFatalBwrap, meta.State)
+		assert.Equal(t, stateFatalContainer, meta.State)
 		return
 	}
 	defer func() { _ = stopAgent(cfg, []string{agentName}) }()
@@ -2862,10 +2880,10 @@ func TestAgentRunContextStartWatchdogAlreadyRunning(t *testing.T) {
 }
 
 // TestStartAgentContainerSuccess 覆盖 startAgentContainer 成功分支
-// 在当前环境无法验证真实 bwrap 成功路径时自动跳过，避免 CI 假失败
+// 在当前环境无法验证真实容器成功路径时自动跳过，避免 CI 假失败
 func TestStartAgentContainerSuccess(t *testing.T) {
-	if !isBwrapUsable() {
-		t.Skip("skipping bwrap-dependent happy-path test on this environment")
+	if !isBwrapUsable() && !isDockerUsable() {
+		t.Skip("skipping container-dependent happy-path test on this environment")
 	}
 
 	tmpDir, cleanup := setupTestConfig(t)
@@ -2883,16 +2901,19 @@ func TestStartAgentContainerSuccess(t *testing.T) {
 	meta, err := store.GetAgent(context.Background(), agentName)
 	require.NoError(t, err)
 
+	factory, err := container.NewFactory(cfg.ContainerRuntime)
+	require.NoError(t, err)
+
 	logger := log.Global()
-	err = startAgentContainer(store, agentName, meta, logger)
+	err = startAgentContainer(store, agentName, meta, logger, factory)
 	assert.NoError(t, err)
 }
 
 // TestStartAgentByNameSuccess 覆盖 startAgentByName 成功分支
-// 在当前环境无法验证真实 bwrap 成功路径时自动跳过，避免 CI 假失败
+// 在当前环境无法验证真实容器成功路径时自动跳过，避免 CI 假失败
 func TestStartAgentByNameSuccess(t *testing.T) {
-	if !isBwrapUsable() {
-		t.Skip("skipping bwrap-dependent happy-path test on this environment")
+	if !isBwrapUsable() && !isDockerUsable() {
+		t.Skip("skipping container-dependent happy-path test on this environment")
 	}
 
 	tmpDir, cleanup := setupTestConfig(t)
@@ -2918,6 +2939,17 @@ func isBwrapUsable() bool {
 	}
 	// 在当前内核下，若最基本的 bwrap unshare-user 都失败，则成功路径无法覆盖
 	cmd := exec.Command("bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--unshare-user", "--unshare-pid", "--proc", "/proc", "--", "/bin/echo", "ok")
+	if err := cmd.Run(); err != nil {
+		return false
+	}
+	return true
+}
+
+func isDockerUsable() bool {
+	if _, err := exec.LookPath("docker"); err != nil {
+		return false
+	}
+	cmd := exec.Command("docker", "version")
 	if err := cmd.Run(); err != nil {
 		return false
 	}

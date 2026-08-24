@@ -24,7 +24,7 @@ State machine and Agent lifecycle.
 
 ## internal/container
 
-Container runtime abstraction and bwrap backend.
+Container runtime abstraction with Docker as the default backend. bwrap and mock remain compatible alternatives.
 
 ### Interfaces
 

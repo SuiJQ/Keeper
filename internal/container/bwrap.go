@@ -20,7 +20,10 @@ import (
 	"keeper/pkg/config"
 )
 
-const stateStopped = "stopped"
+const (
+	stateStopped     = "stopped"
+	runtimeTypeBwrap = "bwrap"
+)
 
 // BwrapContainer bwrap 容器运行时实现
 type BwrapContainer struct {
@@ -116,7 +119,7 @@ func (f *BwrapFactory) Create(name string) (Container, error) {
 
 // Type 返回运行时类型
 func (f *BwrapFactory) Type() string {
-	return "bwrap"
+	return runtimeTypeBwrap
 }
 
 // Start 启动容器
@@ -127,7 +130,7 @@ func (c *BwrapContainer) Start(ctx context.Context, spec Spec) (int, error) {
 	// 检查环境依赖
 	if err := c.checkDependencies(); err != nil {
 		c.status.State = "fatal_bwrap_exec"
-		RecordContainerStart("bwrap", "error")
+		RecordContainerStart(runtimeTypeBwrap, "error")
 		return 0, err
 	}
 
@@ -146,14 +149,14 @@ func (c *BwrapContainer) Start(ctx context.Context, spec Spec) (int, error) {
 	}
 
 	// 创建命令
-	cmd := exec.CommandContext(ctx, "bwrap", args...) // #nosec G204
+	cmd := exec.CommandContext(ctx, runtimeTypeBwrap, args...) // #nosec G204
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 
 	// 启动进程
 	if err := cmd.Start(); err != nil {
 		c.status.State = "fatal_bwrap_exec"
-		RecordContainerStart("bwrap", "error")
+		RecordContainerStart(runtimeTypeBwrap, "error")
 		return 0, fmt.Errorf("start bwrap: %w", err)
 	}
 
@@ -166,9 +169,9 @@ func (c *BwrapContainer) Start(ctx context.Context, spec Spec) (int, error) {
 		Ports:  spec.Ports,
 	}
 
-	RecordContainerStart("bwrap", "success")
-	RecordContainerStartDuration("bwrap", time.Since(startTime).Seconds())
-	SetContainerActive("bwrap", 1)
+	RecordContainerStart(runtimeTypeBwrap, "success")
+	RecordContainerStartDuration(runtimeTypeBwrap, time.Since(startTime).Seconds())
+	SetContainerActive(runtimeTypeBwrap, 1)
 
 	c.logger.Info("container started", log.Field{Key: "pid", Value: cmd.Process.Pid})
 	return cmd.Process.Pid, nil
@@ -208,7 +211,7 @@ func (c *BwrapContainer) Stop(ctx context.Context, grace time.Duration) error {
 		c.logger.Warn("grace period exceeded, force killing")
 		if err := c.cmd.Process.Kill(); err != nil {
 			c.logger.Error("error killing container", log.Field{Key: "error", Value: err.Error()})
-			RecordContainerStop("bwrap", "error")
+			RecordContainerStop(runtimeTypeBwrap, "error")
 			c.status.State = stateStopped
 			c.status.PID = 0
 			c.status.PGID = 0
@@ -225,9 +228,9 @@ func (c *BwrapContainer) Stop(ctx context.Context, grace time.Duration) error {
 	c.status.PID = 0
 	c.status.PGID = 0
 
-	RecordContainerStop("bwrap", "success")
-	RecordContainerStopDuration("bwrap", time.Since(startTime).Seconds())
-	SetContainerActive("bwrap", 0)
+	RecordContainerStop(runtimeTypeBwrap, "success")
+	RecordContainerStopDuration(runtimeTypeBwrap, time.Since(startTime).Seconds())
+	SetContainerActive(runtimeTypeBwrap, 0)
 
 	c.logger.Info("container stopped successfully")
 	return nil
@@ -266,7 +269,7 @@ func (c *BwrapContainer) Exec(ctx context.Context, req ExecRequest) (*ExecRespon
 
 func ensureContainerRunning(c *BwrapContainer) error {
 	if c.cmd == nil || c.cmd.Process == nil {
-		RecordContainerExec("bwrap", "error")
+		RecordContainerExec(runtimeTypeBwrap, "error")
 		return errors.NewKeeperError(errors.ErrCodeContainer, "container not running", nil)
 	}
 	return nil
@@ -274,7 +277,7 @@ func ensureContainerRunning(c *BwrapContainer) error {
 
 func ensureNsenterAvailable() error {
 	if _, err := exec.LookPath("nsenter"); err != nil {
-		RecordContainerExec("bwrap", "error")
+		RecordContainerExec(runtimeTypeBwrap, "error")
 		return errors.NewKeeperError(errors.ErrCodeProcess, "nsenter not found, cannot exec into container", err)
 	}
 	return nil
@@ -346,11 +349,11 @@ func buildExecResponse(exitCode int, stdout, stderr *bytes.Buffer, startTime tim
 
 	if exitCode != 0 {
 		resp.Error = fmt.Sprintf("command exited with code %d", exitCode)
-		RecordContainerExec("bwrap", "error")
+		RecordContainerExec(runtimeTypeBwrap, "error")
 	} else {
-		RecordContainerExec("bwrap", "success")
+		RecordContainerExec(runtimeTypeBwrap, "success")
 	}
-	RecordContainerExecDuration("bwrap", time.Since(startTime).Seconds())
+	RecordContainerExecDuration(runtimeTypeBwrap, time.Since(startTime).Seconds())
 	return resp
 }
 
@@ -400,7 +403,7 @@ func (c *BwrapContainer) Close() error {
 // checkDependencies 检查环境依赖
 func (c *BwrapContainer) checkDependencies() error {
 	// 检查 bwrap 是否可用
-	_, err := exec.LookPath("bwrap")
+	_, err := exec.LookPath(runtimeTypeBwrap)
 	if err != nil {
 		return errors.NewKeeperError(errors.ErrCodeFatalBwrap, "bwrap not found, please install bubblewrap", err)
 	}
