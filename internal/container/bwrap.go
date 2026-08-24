@@ -23,8 +23,9 @@ import (
 var errOverlayUnsupported = errors.NewKeeperError(errors.ErrCodeFatalKernel, "OverlayFS+UserNS 不可用，请确保宿主机内核支持 CONFIG_OVERLAY_FS_USERNS", nil)
 
 const (
-	stateStopped     = "stopped"
-	runtimeTypeBwrap = "bwrap"
+	stateStopped        = "stopped"
+	runtimeTypeBwrap    = "bwrap"
+	fatalBwrapExecState = "fatal_bwrap_exec"
 )
 
 // BwrapContainer bwrap 容器运行时实现
@@ -131,7 +132,7 @@ func (c *BwrapContainer) Start(ctx context.Context, spec Spec) (int, error) {
 
 	// 检查环境依赖
 	if err := c.checkDependencies(); err != nil {
-		c.status.State = "fatal_bwrap_exec"
+		c.status.State = fatalBwrapExecState
 		RecordContainerStart(runtimeTypeBwrap, "error")
 		return 0, err
 	}
@@ -173,21 +174,21 @@ func (c *BwrapContainer) Start(ctx context.Context, spec Spec) (int, error) {
 	}
 
 	// 创建命令
-	cmd := exec.CommandContext(ctx, runtimeTypeBwrap, args...) // #nosec G204
-	cmd.Stdout = nil
-	cmd.Stderr = nil
-	// 防御性设置：强制 Go 运行时走 clone 而非 clone3
-	cmd.Env = append(os.Environ(), "GODEBUG=clone3=0")
+	cmd := buildBwrapCommand(ctx, args)
 
 	// 启动进程
 	if err := cmd.Start(); err != nil {
-		c.status.State = "fatal_bwrap_exec"
+		c.status.State = fatalBwrapExecState
 		RecordContainerStart(runtimeTypeBwrap, "error")
 		return 0, fmt.Errorf("start bwrap: %w", err)
 	}
 
 	c.cmd = cmd
+	c.finalizeStart(startTime, cmd, spec)
+	return cmd.Process.Pid, nil
+}
 
+func (c *BwrapContainer) finalizeStart(startTime time.Time, cmd *exec.Cmd, spec Spec) {
 	// 确定性获取 PGID：读取实际进程组 ID，而非假设等于 PID
 	pgid := cmd.Process.Pid
 	if gid, err := syscall.Getpgid(pgid); err == nil && gid > 0 {
@@ -211,7 +212,15 @@ func (c *BwrapContainer) Start(ctx context.Context, spec Spec) (int, error) {
 	SetContainerActive(runtimeTypeBwrap, 1)
 
 	c.logger.Info("container started", log.Field{Key: "pid", Value: cmd.Process.Pid})
-	return cmd.Process.Pid, nil
+}
+
+func buildBwrapCommand(ctx context.Context, args []string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, runtimeTypeBwrap, args...) // #nosec G204
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	// 防御性设置：强制 Go 运行时走 clone 而非 clone3
+	cmd.Env = append(os.Environ(), "GODEBUG=clone3=0")
+	return cmd
 }
 
 // Stop 停止容器

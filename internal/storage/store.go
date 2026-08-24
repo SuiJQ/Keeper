@@ -842,51 +842,9 @@ func compressCopy(src, dst string, compressionLevel int) (int64, int, error) {
 
 	var totalSize int64
 	var fileCount int
-	err = filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		rel, err := filepath.Rel(src, path)
-		if err != nil {
-			return err
-		}
-		if rel == "." {
-			return nil
-		}
-
-		header, err := tar.FileInfoHeader(info, "")
-		if err != nil {
-			return err
-		}
-		header.Name = rel
-		if err := tw.WriteHeader(header); err != nil {
-			return err
-		}
-
-		if info.IsDir() {
-			return nil
-		}
-
-		fileCount++
-		srcFile, err := os.Open(path) // #nosec G304
-		if err != nil {
-			return err
-		}
-		n, err := io.Copy(gw, srcFile)
-		if closeErr := srcFile.Close(); closeErr != nil {
-			_ = closeErr
-		}
-		if err != nil {
-			if stderrors.Is(err, syscall.ENOSPC) {
-				return fmt.Errorf("%w: %s", keeperrors.ErrNoSpace, err)
-			}
-			return err
-		}
-		totalSize += n
-		return nil
-	})
-
-	if err != nil {
+	if err := filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+		return compressCopyWalk(src, path, info, err, tw, gw, &totalSize, &fileCount)
+	}); err != nil {
 		_ = os.Remove(dst)
 		if stderrors.Is(err, syscall.ENOSPC) {
 			return 0, 0, fmt.Errorf("%w: %s", keeperrors.ErrNoSpace, err)
@@ -895,6 +853,52 @@ func compressCopy(src, dst string, compressionLevel int) (int64, int, error) {
 	}
 
 	return totalSize, fileCount, nil
+}
+
+func compressCopyWalk(src, path string, info os.FileInfo, err error, tw *tar.Writer, gw *gzip.Writer, totalSize *int64, fileCount *int) error {
+	if err != nil {
+		return err
+	}
+	if info == nil {
+		return nil
+	}
+	rel, err2 := filepath.Rel(src, path)
+	if err2 != nil {
+		return err2
+	}
+	if rel == "." {
+		return nil
+	}
+
+	header, err := tar.FileInfoHeader(info, "")
+	if err != nil {
+		return err
+	}
+	header.Name = rel
+	if err := tw.WriteHeader(header); err != nil {
+		return err
+	}
+
+	if info.IsDir() {
+		return nil
+	}
+
+	srcFile, err := os.Open(path) // #nosec G304
+	if err != nil {
+		return err
+	}
+	defer func() { _ = srcFile.Close() }()
+
+	n, err := io.Copy(gw, srcFile)
+	if err != nil {
+		if stderrors.Is(err, syscall.ENOSPC) {
+			return fmt.Errorf("%w: %s", keeperrors.ErrNoSpace, err)
+		}
+		return err
+	}
+	*totalSize += n
+	*fileCount++
+	return nil
 }
 
 // decompressCopy 解压 tar.gz 到目录

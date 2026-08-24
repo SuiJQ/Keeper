@@ -97,7 +97,7 @@ func SanitizedResolvConf() (string, error) {
 }
 
 func extractNameservers(path string) []string {
-	f, err := os.Open(path)
+	f, err := os.Open(path) // #nosec G304
 	if err != nil {
 		return nil
 	}
@@ -118,7 +118,8 @@ func extractNameservers(path string) []string {
 }
 
 func defaultGateway() string {
-	cmd := exec.Command("ip", "route", "show", "default") // #nosec G204
+	const defaultRoute = "default"
+	cmd := exec.Command("ip", "route", "show", defaultRoute) // #nosec G204
 	out, err := cmd.Output()
 	if err != nil {
 		return ""
@@ -126,7 +127,7 @@ func defaultGateway() string {
 	scanner := bufio.NewScanner(bytes.NewReader(out))
 	for scanner.Scan() {
 		fields := strings.Fields(scanner.Text())
-		if len(fields) >= 3 && fields[0] == "default" && fields[1] == "via" {
+		if len(fields) >= 3 && fields[0] == defaultRoute && fields[1] == "via" {
 			return strings.TrimSpace(fields[2])
 		}
 	}

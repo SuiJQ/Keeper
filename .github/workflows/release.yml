@@ -1,0 +1,56 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and Release
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        goarch: [amd64, arm64]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+          cache: true
+
+      - name: Build binary
+        run: |
+          mkdir -p bin
+          GOARCH=${{ matrix.goarch }} go build -o bin/keeper-${{ matrix.goarch }} ./cmd/keeper
+
+      - name: Verify binary
+        run: |
+          chmod +x bin/keeper-${{ matrix.goarch }}
+          ./bin/keeper-${{ matrix.goarch }} version
+
+      - name: Check binary size
+        run: |
+          SIZE=$(stat -c%s bin/keeper-${{ matrix.goarch }})
+          echo "Binary size (${{ matrix.goarch }}): $SIZE bytes"
+          if [ $SIZE -gt 20971520 ]; then
+            echo "ERROR: Binary size exceeds 20MB limit"
+            exit 1
+          fi
+
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            bin/keeper-${{ matrix.goarch }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
