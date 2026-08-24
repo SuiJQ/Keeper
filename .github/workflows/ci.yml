@@ -71,7 +71,7 @@ jobs:
 
       - name: Run cold-start benchmarks
         run: |
-          go test -bench=BenchmarkStartup -benchmem -run=^$ ./benchmarks/...
+          go test -bench=BenchmarkStartupCLI -benchmem -run=^$ ./benchmarks/...
         env:
           KEEPER_BIN: ${{ github.workspace }}/bin/keeper
 
