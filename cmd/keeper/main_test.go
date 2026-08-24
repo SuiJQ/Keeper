@@ -2790,3 +2790,79 @@ func TestAgentRunContextStartWatchdogAlreadyRunning(t *testing.T) {
 	assert.Contains(t, err.Error(), "start watchdog")
 }
 
+// TestStartAgentContainerSuccess 覆盖 startAgentContainer 成功分支
+// 在当前环境无法验证真实 bwrap 成功路径时自动跳过，避免 CI 假失败
+func TestStartAgentContainerSuccess(t *testing.T) {
+	if !isBwrapUsable() {
+		t.Skip("skipping bwrap-dependent happy-path test on this environment")
+	}
+
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	store, err := storage.NewStore(cfg.Home)
+	require.NoError(t, err)
+
+	agentName := "start-success-agent"
+	require.NoError(t, createAgent(cfg, []string{agentName}))
+
+	meta, err := store.GetAgent(context.Background(), agentName)
+	require.NoError(t, err)
+
+	logger := log.Global()
+	err = startAgentContainer(store, agentName, meta, logger)
+	assert.NoError(t, err)
+}
+
+// TestStartAgentByNameSuccess 覆盖 startAgentByName 成功分支
+// 在当前环境无法验证真实 bwrap 成功路径时自动跳过，避免 CI 假失败
+func TestStartAgentByNameSuccess(t *testing.T) {
+	if !isBwrapUsable() {
+		t.Skip("skipping bwrap-dependent happy-path test on this environment")
+	}
+
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	agentName := "start-by-name-success-agent"
+	require.NoError(t, createAgent(cfg, []string{agentName}))
+
+	// 注册 mock 容器，使 startAgentContainer 成功
+	container.Register(agentName, &container.MockContainer{})
+
+	err = startAgentByName(cfg, agentName)
+	assert.NoError(t, err)
+}
+
+// isBwrapUsable 判断当前环境是否能真正跑通 bwrap 成功路径
+func isBwrapUsable() bool {
+	if _, err := exec.LookPath("bwrap"); err != nil {
+		return false
+	}
+	// 在当前内核下，若最基本的 bwrap unshare-user 都失败，则成功路径无法覆盖
+	cmd := exec.Command("bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--unshare-user", "--unshare-pid", "--proc", "/proc", "--", "/bin/echo", "ok")
+	if err := cmd.Run(); err != nil {
+		return false
+	}
+	return true
+}
+
+// TestBuildRunContextSuccess 覆盖 buildRunContext 成功分支
+func TestBuildRunContextSuccess(t *testing.T) {
+	tmpDir, cleanup := setupTestConfig(t)
+	defer cleanup()
+
+	cfg, err := config.Load(tmpDir)
+	require.NoError(t, err)
+
+	r, err := buildRunContext(cfg, "build-run-context-success-agent", log.Global())
+	assert.NoError(t, err)
+	assert.NotNil(t, r)
+}
+

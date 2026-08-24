@@ -36,6 +36,7 @@
 - [ ] Benchmark results documented
 - [ ] Startup latency benchmark added
 - [ ] CI matrix validated on Ubuntu/Alpine
+- [x] bwrap validation strategy documented: happy-path lifecycle is validated via `MockContainer`; real bwrap end-to-end is gated by kernel config (`CONFIG_OVERLAY_FS_USERNS`) and skipped in environments without it
 
 ## Release Process
 
