@@ -142,8 +142,12 @@ func (c *DockerContainer) Stop(ctx context.Context, grace time.Duration) error {
 		return nil
 	}
 
-	// 优雅停止
-	cmd := exec.CommandContext(ctx, "docker", "stop", c.id) // #nosec G204
+	// 优雅停止（将 grace 转换为秒，最小 1 秒）
+	stopGrace := int(grace.Seconds())
+	if stopGrace < 1 {
+		stopGrace = 1
+	}
+	cmd := exec.CommandContext(ctx, "docker", "stop", "--time", fmt.Sprintf("%d", stopGrace), c.id) // #nosec G204
 	if err := cmd.Run(); err != nil {
 		c.logger.Warn("docker stop failed", log.Field{Key: "error", Value: err.Error()})
 	}
@@ -171,21 +175,21 @@ func (c *DockerContainer) Exec(ctx context.Context, req ExecRequest) (*ExecRespo
 	args := []string{"exec", c.id}
 	args = append(args, "/bin/sh", "-c", req.Command)
 
-	cmd := exec.CommandContext(ctx, "docker", args...) // #nosec G204
+	runCmd := exec.CommandContext(ctx, "docker", args...) // #nosec G204
 	var stdout, stderr strings.Builder
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	runCmd.Stdout = &stdout
+	runCmd.Stderr = &stderr
 
 	if req.Timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, req.Timeout)
 		defer cancel()
-		cmd = exec.CommandContext(ctx, "docker", args...) // #nosec G204
-		cmd.Stdout = &stdout
-		cmd.Stderr = &stderr
+		runCmd = exec.CommandContext(ctx, "docker", args...) // #nosec G204
+		runCmd.Stdout = &stdout
+		runCmd.Stderr = &stderr
 	}
 
-	err := cmd.Run()
+	err := runCmd.Run()
 
 	exitCode := 0
 	if err != nil {
@@ -291,9 +295,8 @@ func (c *DockerContainer) Close() error {
 
 // getContainerID 获取容器 ID
 func (c *DockerContainer) getContainerID() (string, error) {
-	// docker run -d 的输出就是容器 ID
-	// 但我们需要通过 name 确认
-	cmd := exec.Command("docker", "ps", "-q", "--filter", fmt.Sprintf("name=%s", c.name)) // #nosec G204
+	// 使用精确名称过滤，避免匹配到名称相似的其他容器
+	cmd := exec.Command("docker", "ps", "-q", "--filter", fmt.Sprintf("name=^/%s$", c.name)) // #nosec G204
 	output, err := cmd.Output()
 	if err != nil {
 		return "", err

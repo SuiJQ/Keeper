@@ -32,10 +32,37 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y bubblewrap libseccomp-dev libcap-dev
 
-      - name: Install dependencies (Alpine)
-        if: runner.os == 'Linux' && contains(matrix.os, 'alpine')
+      - name: Verify Docker availability (Docker-first runtime gate)
         run: |
-          sudo apk add bubblewrap libseccomp-dev linux-headers
+          echo "Verifying Docker is available as default container runtime..."
+          if command -v docker >/dev/null 2>&1; then
+            docker --version
+            docker info --format '{{.ServerVersion}}' || true
+            echo "Docker is available"
+          else
+            echo "WARNING: Docker is not installed; tests will fallback to bwrap/mock where applicable"
+          fi
+
+      - name: Verify default runtime selection
+        run: |
+          echo "Verifying default container runtime is Docker..."
+          go run -mod=mod ./cmd/keeper version
+          # Inspect default config programmatically
+          go run -mod=mod - <<'EOF'
+          package main
+          import (
+            "fmt"
+            "keeper/pkg/config"
+          )
+          func main() {
+            cfg := config.DefaultConfig()
+            fmt.Printf("Default container runtime: %s\n", cfg.ContainerRuntime)
+            if cfg.ContainerRuntime != "docker" {
+              fmt.Println("ERROR: default container runtime is not docker")
+              panic("default runtime gate failed")
+            }
+          }
+          EOF
 
       - name: Verify Go installation
         run: go version
@@ -55,6 +82,12 @@ jobs:
 
       - name: Run unit tests
         run: go test ./...
+        env:
+          KEEPER_BIN: ${{ github.workspace }}/bin/keeper
+
+      - name: Run cold-start benchmarks
+        run: |
+          go test -bench=BenchmarkStartup -benchmem -run=^$ ./benchmarks/...
         env:
           KEEPER_BIN: ${{ github.workspace }}/bin/keeper
 
@@ -259,3 +292,45 @@ jobs:
       - name: Skip bwrap integration tests
         if: env.SKIP_BWRAP == 'true'
         run: echo "Skipping bwrap integration tests due to missing kernel support"
+
+  docker-runtime:
+    name: Docker runtime gate
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+          cache: true
+
+      - name: Install Docker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y docker.io
+          sudo systemctl start docker
+          sudo systemctl enable docker
+          docker --version
+
+      - name: Verify default runtime is Docker
+        run: |
+          go run -mod=mod - <<'EOF'
+          package main
+          import (
+            "fmt"
+            "keeper/pkg/config"
+          )
+          func main() {
+            cfg := config.DefaultConfig()
+            fmt.Printf("Default container runtime: %s\n", cfg.ContainerRuntime)
+            if cfg.ContainerRuntime != "docker" {
+              fmt.Println("ERROR: default container runtime is not docker")
+              panic("default runtime gate failed")
+            }
+          }
+          EOF
+
+      - name: Run Docker container tests
+        run: go test -v ./internal/container/ -run "Docker" -timeout 10m
