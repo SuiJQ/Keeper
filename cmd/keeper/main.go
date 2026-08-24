@@ -395,6 +395,7 @@ type agentRunContext struct {
 	MCP           *mcp.Server
 	Watchdog      *watchdog.Watchdog
 	ownsContainer bool
+	cfg           *config.Config
 }
 
 func (r *agentRunContext) Close() {
@@ -413,7 +414,7 @@ func (r *agentRunContext) Start(ctx context.Context) error {
 	if err := r.Watchdog.Start(ctx); err != nil {
 		return fmt.Errorf("start watchdog: %w", err)
 	}
-	return startAgentMetrics(nil, r.MCP, r.Watchdog)
+	return startAgentMetrics(r.cfg, r.MCP, r.Watchdog)
 }
 
 func buildRunContext(cfg *config.Config, name string, logger log.Logger) (*agentRunContext, error) {
@@ -457,6 +458,7 @@ func buildRunContext(cfg *config.Config, name string, logger log.Logger) (*agent
 		MCP:           mcpServer,
 		Watchdog:      wd,
 		ownsContainer: ownsContainer,
+		cfg:           cfg,
 	}, nil
 }
 

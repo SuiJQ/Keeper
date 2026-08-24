@@ -84,13 +84,14 @@ func TestIsValidName(t *testing.T) {
 }
 
 func TestStatDevice(t *testing.T) {
-	// 测试不存在路径
-	dev := statDevice("/nonexistent/path")
+	// 使用一个确定不存在的路径
+	tmpDir := t.TempDir()
+	dev := statDevice(filepath.Join(tmpDir, "this-definitely-does-not-exist-12345"))
 	assert.Equal(t, uint64(0), dev)
 
-	// 测试当前目录（应该不是设备或返回0）
+	// 测试当前目录（某些环境下可能是设备，只需保证不崩溃）
 	dev = statDevice(".")
-	assert.True(t, dev == 0 || dev != 0, "statDevice should return a value")
+	assert.NotNil(t, dev)
 }
 
 func TestKillProcess(t *testing.T) {
