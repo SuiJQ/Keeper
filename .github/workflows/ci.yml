@@ -46,12 +46,14 @@ jobs:
       - name: Verify default runtime selection
         run: |
           echo "Verifying default container runtime is Docker..."
-          go run -mod=mod ./cmd/keeper version
-          # Inspect default config programmatically
+          # Ensure dependencies are available
+          go mod download
+          # Verify default config programmatically
           go run -mod=mod - <<'EOF'
           package main
           import (
             "fmt"
+            "os"
             "keeper/pkg/config"
           )
           func main() {
@@ -59,7 +61,7 @@ jobs:
             fmt.Printf("Default container runtime: %s\n", cfg.ContainerRuntime)
             if cfg.ContainerRuntime != "docker" {
               fmt.Println("ERROR: default container runtime is not docker")
-              panic("default runtime gate failed")
+              os.Exit(1)
             }
           }
           EOF
@@ -306,13 +308,31 @@ jobs:
           go-version: '1.21'
           cache: true
 
-      - name: Install Docker
+      - name: Install and start Docker
         run: |
-          sudo apt-get update
-          sudo apt-get install -y docker.io
-          sudo systemctl start docker
-          sudo systemctl enable docker
-          docker --version
+          echo "Setting up Docker..."
+          if ! command -v docker >/dev/null 2>&1; then
+            echo "Docker not found, installing..."
+            sudo apt-get update
+            sudo apt-get install -y docker.io
+          else
+            echo "Docker already installed: $(docker --version)"
+          fi
+          # Start Docker daemon (service is preferred on Ubuntu runners)
+          sudo service docker start || true
+          # Wait for Docker to become ready
+          for i in $(seq 1 30); do
+            if docker info >/dev/null 2>&1; then
+              echo "Docker is ready"
+              break
+            fi
+            echo "Waiting for Docker... ($i/30)"
+            sleep 1
+          done
+          docker info --format '{{.ServerVersion}}' || {
+            echo "ERROR: Docker daemon is not available"
+            exit 1
+          }
 
       - name: Verify default runtime is Docker
         run: |
