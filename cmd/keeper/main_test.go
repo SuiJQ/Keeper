@@ -1744,15 +1744,17 @@ func TestStartAgentContainerErrors(t *testing.T) {
 	cfg, err := config.Load(tmpDir)
 	require.NoError(t, err)
 
-	// 使用不存在的目录来触发 container 创建失败
-	cfg.Home = "/nonexistent/path"
-
 	store, err := storage.NewStore(cfg.Home)
 	require.NoError(t, err)
 
-	meta := &storage.AgentMeta{Name: "error-container"}
+	// 使用无效状态触发 startAgentContainer 失败
+	meta := &storage.AgentMeta{
+		Name:  "error-container",
+		State: "invalid-state",
+	}
 	err = startAgentContainer(store, "error-container", meta, log.Global())
 	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot start agent in state")
 }
 
 // TestRegisterReloadHandlerReload 覆盖 registerReloadHandler 的重载回调
