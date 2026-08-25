@@ -369,7 +369,19 @@ func sanitizeEnv(reqEnv []string) []string {
 			env = append(env, e)
 		}
 	}
-	return append(env, reqEnv...)
+	for _, e := range reqEnv {
+		skip := false
+		for _, prefix := range skipPrefixes {
+			if strings.HasPrefix(e, prefix+"=") {
+				skip = true
+				break
+			}
+		}
+		if !skip {
+			env = append(env, e)
+		}
+	}
+	return env
 }
 
 func runCommand(cmd *exec.Cmd) int {
@@ -525,7 +537,7 @@ func (c *BwrapContainer) buildOverlayArgs(spec Spec) []string {
 func (c *BwrapContainer) buildResourceArgs(spec Spec) []string {
 	if c.resourceStrat != nil {
 		resourceArgs, err := c.resourceStrat.Configure(spec)
-		if err == nil {
+		if err == nil && len(resourceArgs) > 0 {
 			return resourceArgs
 		}
 	}
@@ -572,7 +584,7 @@ func (c *BwrapContainer) buildEnvArgs(spec Spec) []string {
 	var args []string
 	for _, env := range spec.Envvars {
 		parts := strings.SplitN(env, "=", 2)
-		if len(parts) == 2 {
+		if len(parts) == 2 && parts[0] != "" {
 			args = append(args, fmt.Sprintf("--setenv=%s=%s", parts[0], parts[1]))
 		}
 	}
